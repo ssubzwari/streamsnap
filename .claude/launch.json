@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Backend (FastAPI + uvicorn)",
+      "runtimeExecutable": "D:\\Claude\\MetubePlus\\backend\\.venv\\Scripts\\uvicorn.exe",
+      "runtimeArgs": ["app.main:socket_app", "--reload"],
+      "cwd": "${workspaceFolder}/backend",
+      "port": 8000
+    },
+    {
+      "name": "Frontend (Vite)",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["node_modules\\vite\\bin\\vite.js"],
+      "cwd": "${workspaceFolder}/frontend",
+      "port": 5173
+    }
+  ]
+}

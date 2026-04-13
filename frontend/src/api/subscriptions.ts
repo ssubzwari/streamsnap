@@ -1,0 +1,46 @@
+import { apiFetch } from "./client";
+import type { SubscriptionInfo } from "@/ws/events";
+
+export interface SubscriptionCreate {
+  url: string;
+  check_interval_minutes?: number;
+  format_spec?: string;
+  download_existing?: boolean;
+}
+
+export interface SubscriptionUpdate {
+  check_interval_minutes?: number;
+  format_spec?: string;
+  is_active?: boolean;
+}
+
+export async function listSubscriptions(): Promise<SubscriptionInfo[]> {
+  return apiFetch<SubscriptionInfo[]>("/subscriptions");
+}
+
+export async function createSubscription(
+  req: SubscriptionCreate,
+): Promise<SubscriptionInfo> {
+  return apiFetch<SubscriptionInfo>("/subscriptions", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function updateSubscription(
+  id: number,
+  req: SubscriptionUpdate,
+): Promise<SubscriptionInfo> {
+  return apiFetch<SubscriptionInfo>(`/subscriptions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function deleteSubscription(id: number): Promise<void> {
+  return apiFetch<void>(`/subscriptions/${id}`, { method: "DELETE" });
+}
+
+export async function checkSubscription(id: number): Promise<void> {
+  return apiFetch<void>(`/subscriptions/${id}/check`, { method: "POST" });
+}

@@ -1,0 +1,150 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+MetubePlus is a self-hosted video downloader web app wrapping [yt-dlp](https://github.com/yt-dlp/yt-dlp). It exposes yt-dlp's full configuration surface, supports playlist subscriptions with automatic polling, and delivers real-time download progress and notifications over WebSockets.
+
+**Prerequisites (must be on PATH):** Python 3.11+, Node 20+, `yt-dlp`, `ffmpeg`
+
+**Deployment target:** Local Windows only — no Docker, no compose. Backend runs via `uvicorn` in a Python venv; frontend via Vite dev server. Single-user, no auth (same model as MeTube — assumes private network).
+
+## Commands
+
+### Backend
+
+```bash
+cd backend
+python -m venv .venv
+.venv/Scripts/activate          # Windows
+pip install -e .
+uvicorn app.main:app --reload   # dev server → http://localhost:8000
+```
+
+```bash
+# Tests
+cd backend && pytest tests/
+
+# Single test file
+pytest tests/test_download_manager.py
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev    # Vite dev server → http://localhost:5173
+```
+
+The Vite dev server must proxy `/api` and `/socket.io` requests to `http://localhost:8000` — configure this in `vite.config.ts`.
+
+## Architecture
+
+```
+React Frontend (Vite + TS)
+   ↓ REST (fetch)   ↓ Socket.IO
+FastAPI Application (port 8000)
+├── Download Manager  (ProcessPoolExecutor — keeps yt-dlp off asyncio loop)
+├── Subscription Worker  (APScheduler AsyncIOScheduler)
+├── Notification Dispatcher
+└── Routes: /api/downloads  /api/subscriptions  /api/metadata  /api/settings  /api/notifications
+      ↓
+SQLite via SQLAlchemy 2.x (async)
+      ↓
+yt-dlp  (YoutubeDL class, not subprocess)
+```
+
+**Key design decisions:**
+- Downloads run in a `ProcessPoolExecutor` to avoid blocking the asyncio event loop and to sidestep GIL contention across concurrent downloads.
+- yt-dlp is used as a Python library (`YoutubeDL` class). Progress comes from `progress_hooks` callbacks, not stdout parsing.
+- `python-socketio` is mounted on FastAPI for WebSocket events. The client uses `socket.io-client`.
+- Subscription deduplication uses a `seen_videos` table with a `UNIQUE(subscription_id, video_id)` constraint. yt-dlp's `--download-archive` is available as a secondary guard.
+- SQLite only — single-file, zero ops, fits the single-user deployment model.
+- Frontend state: zustand or `useReducer`-based store in `frontend/src/store/`.
+
+## Key Files
+
+| File | Purpose |
+|---|---|
+| `backend/app/main.py` | FastAPI + socketio app factory, lifespan startup/shutdown |
+| `backend/app/config.py` | Pydantic settings, `.env` loading |
+| `backend/app/db.py` | Async SQLAlchemy engine, session dependency, `init_db()` |
+| `backend/app/models.py` | ORM: `Download`, `Subscription`, `SeenVideo`, `Notification`, `Setting` |
+| `backend/app/schemas.py` | Pydantic request/response DTOs |
+| `backend/app/events.py` | WebSocket event name constants + payload dataclasses |
+| `backend/app/ws.py` | socketio server instance, room helpers |
+| `backend/app/ytdl/service.py` | `YoutubeDL` wrapper — `extract_metadata()` and `download()` |
+| `backend/app/ytdl/progress.py` | `progress_hook` → throttled WebSocket event adapter |
+| `backend/app/services/download_manager.py` | Queue, ProcessPoolExecutor, cancellation tokens |
+| `backend/app/services/subscription_worker.py` | APScheduler job: flat-playlist extraction → set diff → enqueue |
+| `frontend/src/ws/socket.ts` | socket.io-client singleton |
+| `frontend/src/styles/tokens.css` | All design tokens (colors, spacing, radii, typography, motion) |
+
+## WebSocket Events
+
+| Event | Direction | Trigger |
+|---|---|---|
+| `download:added` | server→client | Download enqueued |
+| `download:updated` | server→client | Progress tick (~2/sec, throttled) |
+| `download:completed` | server→client | Download finished |
+| `download:failed` | server→client | Worker exception |
+| `download:canceled` | server→client | User cancels |
+| `subscription:checked` | server→client | APScheduler poll completes |
+| `subscription:new_video` | server→client | New video detected in playlist (fires before auto-download enqueues) |
+| `notification:created` | server→client | Any notification (drives toast UI) |
+
+## Data Model
+
+| Table | Key columns |
+|---|---|
+| `downloads` | id, url, title, status (`queued/downloading/completed/failed/canceled`), percent, speed, eta, format_spec, output_path, error_message, subscription_id FK |
+| `subscriptions` | id, url, title, check_interval_minutes, last_checked_at, format_spec, output_template, is_active |
+| `seen_videos` | id, subscription_id FK, video_id, title, upload_date — UNIQUE(subscription_id, video_id) |
+| `notifications` | id, kind, title, body, payload_json, is_read, created_at |
+| `settings` | key/value store for app-wide yt-dlp defaults |
+
+## Subscription Flow
+
+`POST /api/subscriptions` accepts a `download_existing: bool` flag (default `false`).
+
+- **`false` (default):** Backfill all current video IDs into `seen_videos` immediately — enqueue nothing. Only future uploads trigger downloads.
+- **`true`:** Backfill into `seen_videos` AND enqueue a `Download` row for each existing video.
+
+On each APScheduler tick: re-extract flat playlist → set-diff against `seen_videos` → insert new rows → emit `subscription:new_video` + `notification:created` → enqueue downloads.
+
+## Settings UI Tabs (Phase 3)
+
+| Tab | yt-dlp surface |
+|---|---|
+| **Format** | format spec field + presets, quality cap (height), prefer codec (vp9/av1/h264), audio codec (opus/aac/m4a), merge container (mp4/mkv/webm), `--prefer-free-formats`, `--format-sort` |
+| **Subtitles** | write subs, sub langs (multi-select), write auto subs, embed subs, convert subs format |
+| **Metadata & Thumbnails** | embed thumbnail, write thumbnail, write info json, write description, embed metadata, embed chapters |
+| **Post-processing** | SponsorBlock remove categories, ffmpeg location, keep-video toggle |
+| **Download** | concurrent fragments, retries, fragment retries, rate limit, socket timeout, continue partial, no-overwrites |
+| **Output** | paths (temp/home), output template with variable reference, restrict filenames |
+| **Auth** | cookies-from-browser selector, username, password (server-side only) |
+| **Advanced** | raw `YoutubeDL` options JSON escape hatch |
+
+Format presets: **Best Quality** (`bestvideo+bestaudio/best`), **1080p mp4**, **720p mp4**, **Audio only m4a**, **Audio only opus**.
+
+## Design System
+
+Tokens live in `frontend/src/styles/tokens.css`. All values must come from tokens — no ad-hoc color, spacing, or timing values in component CSS.
+
+- **Palette:** bg `#0A0A0B`, surface `#141416`, surface-hi `#1C1C1F`, border `#26262A`, text `#F5F5F7`, text-muted `#A0A0A8`, accent `#7C5CFF`, success `#3FD97F`, warn `#FFB84C`, error `#FF5C5C`
+- **Spacing:** 4px grid (`--space-1` through `--space-8`)
+- **Radii:** sm 6px, md 10px, lg 16px
+- **Font:** Plus Jakarta Sans (`@fontsource/plus-jakarta-sans`, self-hosted)
+- **Motion:** Always `cubic-bezier(0.16, 1, 0.3, 1)` with `--dur-fast` (120ms), `--dur-base` (200ms), or `--dur-slow` (320ms)
+- Styling: CSS Modules only — no Tailwind, no CSS-in-JS
+
+## Phased Implementation
+
+- **Phase 1:** Backend scaffold + download manager + minimal frontend dashboard
+- **Phase 2:** Subscriptions + APScheduler + Subscriptions page
+- **Phase 3:** Full settings UI (8 tabs covering yt-dlp's config surface)
+- **Phase 4:** Design polish — skeletons, toasts, responsive breakpoints
+
+See `plans/kind-wibbling-lake.md` for the full implementation plan.
