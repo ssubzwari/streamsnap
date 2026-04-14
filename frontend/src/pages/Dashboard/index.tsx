@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 
 import Settings from "@/pages/Settings";
 import { SkeletonRow } from "@/components/Skeleton";
@@ -201,7 +201,6 @@ export default function Dashboard() {
   // ── Advanced options state ────────────────────────────────────────────────
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [downloadFolder, setDownloadFolder] = useState("Default");
-  const [autoStart] = useState(true);
   const [subCheckInterval, setSubCheckInterval] = useState("60");
   const [optionPresets, setOptionPresets] = useState("");
 
@@ -335,7 +334,6 @@ export default function Dashboard() {
 
   // ── Selection helpers ─────────────────────────────────────────────────────
   const toggleSelection = (
-    set: Set<number>,
     setter: React.Dispatch<React.SetStateAction<Set<number>>>,
     id: number,
   ) => {
@@ -931,7 +929,7 @@ export default function Dashboard() {
                         type="checkbox"
                         className={styles.checkbox}
                         checked={selectedActive.has(d.id)}
-                        onChange={() => toggleSelection(selectedActive, setSelectedActive, d.id)}
+                        onChange={() => toggleSelection(setSelectedActive, d.id)}
                       />
                     </td>
                     <td>
@@ -1076,7 +1074,7 @@ export default function Dashboard() {
                         type="checkbox"
                         className={styles.checkbox}
                         checked={selectedCompleted.has(d.id)}
-                        onChange={() => toggleSelection(selectedCompleted, setSelectedCompleted, d.id)}
+                        onChange={() => toggleSelection(setSelectedCompleted, d.id)}
                       />
                     </td>
                     <td>
@@ -1252,7 +1250,7 @@ export default function Dashboard() {
                         type="checkbox"
                         className={styles.checkbox}
                         checked={selectedSubs.has(s.id)}
-                        onChange={() => toggleSelection(selectedSubs, setSelectedSubs, s.id)}
+                        onChange={() => toggleSelection(setSelectedSubs, s.id)}
                       />
                     </td>
                     <td>

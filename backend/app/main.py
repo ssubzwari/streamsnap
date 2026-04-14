@@ -13,6 +13,8 @@ from contextlib import asynccontextmanager
 import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db import init_db
@@ -67,6 +69,20 @@ app.include_router(settings_route.router)
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+# ── Serve built frontend (production / Docker) ────────────────────────────────
+# The frontend/dist folder is only present after `npm run build` (or in Docker).
+# In dev mode the Vite dev server handles everything — this block is a no-op.
+_DIST = pathlib.Path(__file__).parent.parent / "frontend" / "dist"
+if _DIST.exists():
+    # Serve /assets, /vite.svg, etc. as static files
+    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="frontend-assets")
+
+    # SPA catch-all: any path that didn't match an API route → index.html
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str) -> FileResponse:
+        return FileResponse(_DIST / "index.html")
 
 
 # socketio wraps the FastAPI ASGI app — uvicorn serves socket_app

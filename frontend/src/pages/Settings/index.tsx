@@ -128,7 +128,7 @@ export default function Settings({ onClose }: Props) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings(s as Record<string, string>);
+      await updateSettings(s as unknown as Record<string, string>);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally {
