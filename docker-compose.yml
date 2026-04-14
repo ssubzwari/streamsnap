@@ -1,0 +1,16 @@
+services:
+  metubeplus:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./downloads:/downloads
+      - metubeplus-data:/data
+    environment:
+      - DOWNLOAD_DIR=/downloads
+      - DB_URL=sqlite+aiosqlite:////data/metubeplus.db
+      - MAX_CONCURRENT_DOWNLOADS=3
+    restart: unless-stopped
+
+volumes:
+  metubeplus-data:
