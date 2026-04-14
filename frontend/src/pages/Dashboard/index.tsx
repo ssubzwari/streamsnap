@@ -1,5 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 
+import Settings from "@/pages/Settings";
+import { SkeletonRow } from "@/components/Skeleton";
 import { createDownload, deleteDownload, downloadPlaylist, listDownloads, openDownload } from "@/api/downloads";
 import { resolveMetadata } from "@/api/metadata";
 import { getSettings, updateSettings } from "@/api/settings";
@@ -46,6 +48,13 @@ const RefreshIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="23 4 23 10 17 10" />
     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+  </svg>
+);
+
+const GearIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
   </svg>
 );
 
@@ -218,6 +227,13 @@ export default function Dashboard() {
   const [subError, setSubError] = useState<string | null>(null);
   const [checkingSubId, setCheckingSubId] = useState<number | null>(null);
 
+  // ── Settings modal ────────────────────────────────────────────────────────
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // ── Loading state ─────────────────────────────────────────────────────────
+  const [loadingDownloads, setLoadingDownloads] = useState(true);
+  const [loadingSubs, setLoadingSubs] = useState(true);
+
   // ── Bulk actions ──────────────────────────────────────────────────────────
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
@@ -226,11 +242,13 @@ export default function Dashboard() {
   useEffect(() => {
     listDownloads()
       .then((data) => dispatchDownloads({ type: "SET", downloads: data }))
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setLoadingDownloads(false));
 
     listSubscriptions()
       .then((data) => dispatchSubs({ type: "SET", subs: data }))
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setLoadingSubs(false));
 
     getSettings()
       .then(({ settings }) => {
@@ -583,7 +601,7 @@ export default function Dashboard() {
     <div className={styles.app}>
       {/* ── Header ── */}
       <header className={styles.header}>
-        <span className={styles.brand}>MeTube</span>
+        <span className={styles.brand}>MeTube<span className={styles.brandPlus}>Plus</span></span>
         <div className={styles.headerStats}>
           {activeDownloads.length > 0 && (
             <>
@@ -598,6 +616,9 @@ export default function Dashboard() {
             </>
           )}
         </div>
+        <button className={styles.settingsBtn} onClick={() => setSettingsOpen(true)} title="Settings">
+          <GearIcon />
+        </button>
       </header>
 
       {/* ── Main content ── */}
@@ -857,8 +878,22 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {activeDownloads.length === 0 ? (
-            <p className={styles.empty}>No active downloads.</p>
+          {loadingDownloads ? (
+            <table className={styles.table}>
+              <tbody>
+                <SkeletonRow />
+                <SkeletonRow />
+              </tbody>
+            </table>
+          ) : activeDownloads.length === 0 ? (
+            <div className={styles.emptyState}>
+              <svg className={styles.emptyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" />
+                <path d="M12 8v4M12 16h.01" />
+              </svg>
+              <p className={styles.emptyTitle}>No active downloads</p>
+              <p className={styles.emptyHint}>Paste a URL above and click Download to get started.</p>
+            </div>
           ) : (
             <table className={styles.table}>
               <colgroup>
@@ -990,8 +1025,15 @@ export default function Dashboard() {
             </div>
           )}
 
-          {completedDownloads.length === 0 ? (
-            <p className={styles.empty}>No completed downloads yet.</p>
+          {completedDownloads.length === 0 && !loadingDownloads ? (
+            <div className={styles.emptyState}>
+              <svg className={styles.emptyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M9 12l2 2 4-4" />
+                <circle cx="12" cy="12" r="10" />
+              </svg>
+              <p className={styles.emptyTitle}>No completed downloads</p>
+              <p className={styles.emptyHint}>Finished downloads will appear here.</p>
+            </div>
           ) : (
             <table className={styles.table}>
               <colgroup>
@@ -1158,10 +1200,21 @@ export default function Dashboard() {
             </div>
           )}
 
-          {subs.length === 0 && !addSubOpen ? (
-            <p className={styles.empty}>
-              No subscriptions yet. Add a playlist or channel URL.
-            </p>
+          {loadingSubs ? (
+            <table className={styles.table}>
+              <tbody>
+                <SkeletonRow />
+                <SkeletonRow />
+              </tbody>
+            </table>
+          ) : subs.length === 0 && !addSubOpen ? (
+            <div className={styles.emptyState}>
+              <svg className={styles.emptyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0 1 18 14.158V11a6 6 0 0 0-4-5.659V5a2 2 0 1 0-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 1 1-6 0v-1m6 0H9" />
+              </svg>
+              <p className={styles.emptyTitle}>No subscriptions</p>
+              <p className={styles.emptyHint}>Subscribe to a playlist or channel to auto-download new videos.</p>
+            </div>
           ) : (
             <table className={styles.table}>
               <colgroup>
@@ -1256,6 +1309,9 @@ export default function Dashboard() {
           )}
         </section>
       </main>
+
+      {/* ── Settings modal ── */}
+      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }

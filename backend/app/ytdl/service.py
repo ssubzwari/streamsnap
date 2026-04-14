@@ -153,13 +153,115 @@ def _entry_url(e: dict) -> str:
     return raw_url or f"https://www.youtube.com/watch?v={video_id}"
 
 
+def _apply_settings(ydl_opts: dict, s: dict) -> None:
+    """Merge saved app settings into ydl_opts in-place."""
+    import json
+
+    def _bool(key: str) -> bool:
+        return s.get(key, "false") == "true"
+
+    def _int(key: str, default: int | None = None) -> int | None:
+        v = s.get(key, "")
+        try:
+            return int(v) if v else default
+        except ValueError:
+            return default
+
+    # ffmpeg location override
+    if s.get("ffmpeg_location"):
+        import os
+        ydl_opts["ffmpeg_location"] = os.path.dirname(s["ffmpeg_location"])
+
+    # Subtitles
+    if _bool("write_subs"):
+        ydl_opts["writesubtitles"] = True
+        langs = s.get("sub_langs", "en")
+        ydl_opts["subtitleslangs"] = [l.strip() for l in langs.split(",") if l.strip()]
+    if _bool("write_auto_subs"):
+        ydl_opts["writeautomaticsub"] = True
+    if _bool("embed_subs"):
+        ydl_opts["embedsubtitles"] = True
+    if s.get("convert_subs"):
+        ydl_opts["convertsubtitles"] = s["convert_subs"]
+
+    # Metadata & thumbnails
+    if _bool("embed_thumbnail"):
+        ydl_opts["embedthumbnail"] = True
+    if _bool("write_thumbnail"):
+        ydl_opts["writethumbnail"] = True
+    if _bool("write_info_json"):
+        ydl_opts["writeinfojson"] = True
+    if _bool("write_description"):
+        ydl_opts["writedescription"] = True
+    if _bool("embed_metadata"):
+        ydl_opts["addmetadata"] = True
+    if _bool("embed_chapters"):
+        ydl_opts["addchapters"] = True
+
+    # Post-processing
+    if s.get("sponsorblock_remove"):
+        cats = [c.strip() for c in s["sponsorblock_remove"].split(",") if c.strip()]
+        if cats:
+            ydl_opts["sponsorblock_remove"] = cats
+    if _bool("keep_video"):
+        ydl_opts["keepvideo"] = True
+
+    # Download tuning
+    n_frags = _int("concurrent_fragments")
+    if n_frags and n_frags > 1:
+        ydl_opts["concurrent_fragment_downloads"] = n_frags
+    retries = _int("retries")
+    if retries is not None:
+        ydl_opts["retries"] = retries
+    frag_retries = _int("fragment_retries")
+    if frag_retries is not None:
+        ydl_opts["fragment_retries"] = frag_retries
+    if s.get("rate_limit"):
+        ydl_opts["ratelimit"] = s["rate_limit"]
+    sock_timeout = _int("socket_timeout")
+    if sock_timeout is not None:
+        ydl_opts["socket_timeout"] = sock_timeout
+    if not _bool("continue_partial"):
+        ydl_opts["continuedl"] = False
+    if _bool("no_overwrites"):
+        ydl_opts["nooverwrites"] = True
+
+    # Output
+    if _bool("restrict_filenames"):
+        ydl_opts["restrictfilenames"] = True
+
+    # Format
+    if _bool("prefer_free_formats"):
+        ydl_opts["prefer_free_formats"] = True
+    if s.get("format_sort"):
+        ydl_opts["format_sort"] = s["format_sort"].split(",")
+
+    # Auth
+    if s.get("cookies_from_browser"):
+        ydl_opts["cookiesfrombrowser"] = (s["cookies_from_browser"],)
+    if s.get("username"):
+        ydl_opts["username"] = s["username"]
+    if s.get("password"):
+        ydl_opts["password"] = s["password"]
+
+    # Advanced raw JSON — applied last, overrides everything
+    if s.get("raw_options_json"):
+        try:
+            extra = json.loads(s["raw_options_json"])
+            if isinstance(extra, dict):
+                ydl_opts.update(extra)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+
 def run_download(
     download_id: int,
     url: str,
     format_spec: str,
     output_dir: str,
-    queue: object,        # queue.Queue (thread-safe)
-    cancel_event: object, # threading.Event
+    queue: object,           # queue.Queue (thread-safe)
+    cancel_event: object,    # threading.Event
+    app_settings: dict | None = None,  # key/value from Setting table
 ) -> str:
     """
     Execute the download in a ThreadPoolExecutor worker thread.
@@ -170,7 +272,7 @@ def run_download(
     hook = make_progress_hook(download_id, queue, cancel_event)
 
     ffmpeg_path = _find_ffmpeg()
-    ydl_opts = {
+    ydl_opts: dict = {
         "format": format_spec,
         "outtmpl": f"{output_dir}/%(title)s.%(ext)s",
         "quiet": True,
@@ -182,6 +284,10 @@ def run_download(
         import os
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_path)
         ydl_opts["merge_output_format"] = "mp4"
+
+    # Merge app settings on top (user-configured overrides)
+    if app_settings:
+        _apply_settings(ydl_opts, app_settings)
 
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)

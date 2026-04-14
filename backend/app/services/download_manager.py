@@ -87,6 +87,15 @@ class DownloadManager:
 
     # ── Internal tasks ────────────────────────────────────────────────────────
 
+    async def _load_app_settings(self) -> dict:
+        """Load all Setting rows as a plain {key: value} dict."""
+        from sqlalchemy import select
+        from app.models import Setting
+        SessionLocal = get_sessionmaker()
+        async with SessionLocal() as session:
+            result = await session.execute(select(Setting))
+            return {s.key: s.value for s in result.scalars()}
+
     async def _process_queue(self) -> None:
         loop = asyncio.get_running_loop()
         while True:
@@ -96,6 +105,8 @@ class DownloadManager:
 
             await self._update_db(job.download_id, status="downloading")
 
+            app_settings = await self._load_app_settings()
+
             future: Future = self._executor.submit(
                 run_download,
                 job.download_id,
@@ -104,6 +115,7 @@ class DownloadManager:
                 job.output_dir or settings.DOWNLOAD_DIR,
                 self._progress_queue,
                 cancel_event,
+                app_settings,
             )
             self._active_futures[job.download_id] = future
 
