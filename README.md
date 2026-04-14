@@ -2,8 +2,6 @@
 
 A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download videos and audio from YouTube and 1000+ other sites, subscribe to playlists with automatic polling, and watch real-time download progress in the browser.
 
-![MetubePlus UI](layout.png)
-
 ## Features
 
 - **Video & audio downloads** — single videos, channels, or playlists
