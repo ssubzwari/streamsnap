@@ -2,6 +2,7 @@
 Notification dispatcher — creates a DB record and emits the WS event.
 """
 
+import asyncio
 import json
 
 from app.db import get_sessionmaker
@@ -30,4 +31,9 @@ async def create_notification(
 
     info = NotificationInfo.model_validate(notif)
     await emit_notification_created(info.model_dump(mode="json"))
+
+    # Dispatch to external channels (fire-and-forget — never blocks the caller)
+    from app.services.external_notifier import dispatch
+    asyncio.create_task(dispatch(kind, title, body))
+
     return info

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./Toast.module.css";
 import { getSocket } from "@/ws/socket";
 import { WS_EVENTS } from "@/ws/events";
@@ -12,8 +12,29 @@ interface ToastItem {
 
 let _nextId = 1;
 
+function requestBrowserPermission() {
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+function fireBrowserNotification(title: string, body?: string) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  new Notification(title, { body, icon: "/favicon.ico" });
+}
+
 export default function ToastContainer() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const permissionRequested = useRef(false);
+
+  useEffect(() => {
+    if (!permissionRequested.current) {
+      permissionRequested.current = true;
+      requestBrowserPermission();
+    }
+  }, []);
 
   useEffect(() => {
     const socket = getSocket();
@@ -27,6 +48,7 @@ export default function ToastContainer() {
         body: data.body,
       };
       setToasts((prev) => [...prev.slice(-4), item]);
+      fireBrowserNotification(item.title, item.body);
 
       // Auto-dismiss after 4s
       setTimeout(() => {

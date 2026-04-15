@@ -484,13 +484,6 @@
   background: color-mix(in srgb, var(--color-surface-hi) 60%, transparent);
 }
 
-.videoCell {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
 .videoTitle {
   font-size: var(--text-sm);
   color: var(--color-text);
@@ -651,6 +644,54 @@
   color: var(--color-error);
   background: color-mix(in srgb, var(--color-error) 10%, transparent);
   border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
+}
+
+/* Icon-only button variants */
+.iconBtnDanger:hover:not(:disabled) {
+  color: var(--color-error) !important;
+  background: color-mix(in srgb, var(--color-error) 10%, transparent) !important;
+}
+
+/* ── Thumbnails ──────────────────────────────────────────────────────────────── */
+
+.videoCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.videoCellText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.thumb {
+  width: 48px;
+  height: 27px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--color-surface-hi);
+}
+
+.subThumb {
+  width: 36px;
+  height: 27px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-hi);
+  border-radius: 4px;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.subThumb svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* ── Status toggles ──────────────────────────────────────────────────────────── */
