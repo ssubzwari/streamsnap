@@ -934,18 +934,23 @@ export default function Dashboard() {
                     </td>
                     <td>
                       <div className={styles.videoCell}>
-                        <span className={styles.videoTitle} title={d.title ?? d.url}>
-                          {d.title ?? d.url}
-                        </span>
-                        <div className={styles.progressTrack}>
-                          <div
-                            className={styles.progressFill}
-                            style={{ width: `${d.percent}%` }}
-                          />
+                        {d.thumbnail && (
+                          <img className={styles.thumb} src={d.thumbnail} alt="" loading="lazy" />
+                        )}
+                        <div className={styles.videoCellText}>
+                          <span className={styles.videoTitle} title={d.title ?? d.url}>
+                            {d.title ?? d.url}
+                          </span>
+                          <div className={styles.progressTrack}>
+                            <div
+                              className={styles.progressFill}
+                              style={{ width: `${d.percent}%` }}
+                            />
+                          </div>
+                          <span className={styles.percentLabel}>
+                            {d.percent.toFixed(0)}%
+                          </span>
                         </div>
-                        <span className={styles.percentLabel}>
-                          {d.percent.toFixed(0)}%
-                        </span>
                       </div>
                     </td>
                     <td className={styles.metaCell}>
@@ -959,11 +964,11 @@ export default function Dashboard() {
                     <td>
                       <div className={styles.rowActions}>
                         <button
-                          className={styles.actionBtn}
+                          className={styles.iconBtn}
                           onClick={() => handleDelete(d.id)}
-                          title="Cancel"
+                          title="Cancel / Remove"
                         >
-                          <TrashIcon /> Remove
+                          <TrashIcon />
                         </button>
                       </div>
                     </td>
@@ -1078,17 +1083,19 @@ export default function Dashboard() {
                       />
                     </td>
                     <td>
-                      <span
-                        className={styles.videoTitle}
-                        title={d.title ?? d.url}
-                      >
-                        {d.title ?? d.url}
-                      </span>
-                      {d.status === "failed" && d.error_message && (
-                        <span className={styles.errorInline}>
-                          {" "}\u2014 {d.error_message}
-                        </span>
-                      )}
+                      <div className={styles.videoCell}>
+                        {d.thumbnail && (
+                          <img className={styles.thumb} src={d.thumbnail} alt="" loading="lazy" />
+                        )}
+                        <div className={styles.videoCellText}>
+                          <span className={styles.videoTitle} title={d.title ?? d.url}>
+                            {d.title ?? d.url}
+                          </span>
+                          {d.status === "failed" && d.error_message && (
+                            <span className={styles.errorInline}>{d.error_message}</span>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className={styles.metaCell}>
                       {d.vcodec === "none" ? "Audio" : "Video"}
@@ -1101,19 +1108,19 @@ export default function Dashboard() {
                       <div className={styles.rowActions}>
                         {d.status === "completed" && d.output_path && (
                           <button
-                            className={styles.actionBtn}
+                            className={styles.iconBtn}
                             onClick={() => openDownload(d.id).catch(console.error)}
-                            title="Open file"
+                            title="Open file in Explorer"
                           >
-                            <FolderOpenIcon /> Open
+                            <FolderOpenIcon />
                           </button>
                         )}
                         <button
-                          className={styles.actionBtnDanger}
+                          className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
                           onClick={() => handleDelete(d.id)}
                           title="Remove"
                         >
-                          <TrashIcon /> Remove
+                          <TrashIcon />
                         </button>
                       </div>
                     </td>
@@ -1254,9 +1261,16 @@ export default function Dashboard() {
                       />
                     </td>
                     <td>
-                      <span className={styles.videoTitle} title={s.title ?? s.url}>
-                        {s.title ?? s.url}
-                      </span>
+                      <div className={styles.videoCell}>
+                        <div className={styles.subThumb}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <path d="M15 10l4.553-2.069A1 1 0 0 1 21 8.87v6.26a1 1 0 0 1-1.447.9L15 14M3 8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8z"/>
+                          </svg>
+                        </div>
+                        <span className={styles.videoTitle} title={s.title ?? s.url}>
+                          {s.title ?? s.url}
+                        </span>
+                      </div>
                     </td>
                     <td>
                       <span
@@ -1272,9 +1286,7 @@ export default function Dashboard() {
                     </td>
                     <td>
                       <button
-                        className={
-                          s.is_active ? styles.statusActive : styles.statusInactive
-                        }
+                        className={s.is_active ? styles.statusActive : styles.statusInactive}
                         onClick={() => handleToggleSub(s)}
                         title={s.is_active ? "Click to pause" : "Click to resume"}
                       >
@@ -1284,19 +1296,19 @@ export default function Dashboard() {
                     <td>
                       <div className={styles.rowActions}>
                         <button
-                          className={styles.actionBtn}
+                          className={styles.iconBtn}
                           onClick={() => handleCheckSub(s.id)}
                           disabled={checkingSubId === s.id}
-                          title="Check now"
+                          title={checkingSubId === s.id ? "Checking…" : "Check now"}
                         >
-                          <RefreshIcon /> {checkingSubId === s.id ? "Checking..." : "Check"}
+                          <RefreshIcon />
                         </button>
                         <button
-                          className={styles.actionBtnDanger}
+                          className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
                           onClick={() => handleDeleteSub(s.id)}
-                          title="Delete"
+                          title="Delete subscription"
                         >
-                          <TrashIcon /> Remove
+                          <TrashIcon />
                         </button>
                       </div>
                     </td>

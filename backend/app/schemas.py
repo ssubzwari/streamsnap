@@ -119,6 +119,32 @@ class NotificationInfo(BaseModel):
     created_at: datetime
 
 
+# ── Notification channel schemas ─────────────────────────────────────────────
+
+class NotificationChannelCreate(BaseModel):
+    kind: str
+    name: str
+    config_json: str | None = None
+    is_enabled: bool = True
+
+
+class NotificationChannelUpdate(BaseModel):
+    name: str | None = None
+    config_json: str | None = None
+    is_enabled: bool | None = None
+
+
+class NotificationChannelInfo(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: str
+    name: str
+    config_json: str | None = None
+    is_enabled: bool
+    created_at: datetime
+
+
 # ── Settings schemas ──────────────────────────────────────────────────────────
 
 class SettingItem(BaseModel):

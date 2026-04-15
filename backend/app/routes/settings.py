@@ -59,6 +59,14 @@ ALLOWED_KEYS = {
     "password",
     # Advanced
     "raw_options_json",
+    # Notification suppression
+    "notify_on_complete",
+    "notify_on_failed",
+    "notify_on_new_video",
+    "notify_on_subscription_error",
+    # Notification summary
+    "notify_summary_enabled",
+    "notify_summary_interval_hours",
 }
 
 

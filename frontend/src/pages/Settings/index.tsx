@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
 import { getSettings, updateSettings } from "@/api/settings";
+import {
+  type ChannelKind,
+  type NotificationChannel,
+  createChannel,
+  deleteChannel,
+  listChannels,
+  sendSummaryNow,
+  testChannel,
+  updateChannel,
+} from "@/api/notifications";
 import styles from "./Settings.module.css";
 
 interface SettingsState {
@@ -47,6 +57,14 @@ interface SettingsState {
   password: string;
   // Advanced
   raw_options_json: string;
+  // Notification suppression
+  notify_on_complete: string;
+  notify_on_failed: string;
+  notify_on_new_video: string;
+  notify_on_subscription_error: string;
+  // Summary
+  notify_summary_enabled: string;
+  notify_summary_interval_hours: string;
 }
 
 const DEFAULTS: SettingsState = {
@@ -86,6 +104,12 @@ const DEFAULTS: SettingsState = {
   username: "",
   password: "",
   raw_options_json: "",
+  notify_on_complete: "true",
+  notify_on_failed: "true",
+  notify_on_new_video: "true",
+  notify_on_subscription_error: "true",
+  notify_summary_enabled: "false",
+  notify_summary_interval_hours: "24",
 };
 
 const TABS = [
@@ -97,6 +121,7 @@ const TABS = [
   "Output",
   "Auth",
   "Advanced",
+  "Notifications",
 ] as const;
 
 type Tab = typeof TABS[number];
@@ -105,11 +130,63 @@ interface Props {
   onClose: () => void;
 }
 
+// ── Channel kind metadata ─────────────────────────────────────────────────────
+
+const CHANNEL_KINDS: { kind: ChannelKind; label: string; fields: { key: string; label: string; type?: string; placeholder?: string }[] }[] = [
+  {
+    kind: "slack",
+    label: "Slack",
+    fields: [{ key: "webhook_url", label: "Webhook URL", placeholder: "https://hooks.slack.com/services/..." }],
+  },
+  {
+    kind: "discord",
+    label: "Discord",
+    fields: [{ key: "webhook_url", label: "Webhook URL", placeholder: "https://discord.com/api/webhooks/..." }],
+  },
+  {
+    kind: "telegram",
+    label: "Telegram",
+    fields: [
+      { key: "bot_token", label: "Bot Token", placeholder: "123456:ABC-DEF..." },
+      { key: "chat_id", label: "Chat ID", placeholder: "-1001234567890" },
+    ],
+  },
+  {
+    kind: "pushover",
+    label: "Pushover",
+    fields: [
+      { key: "app_token", label: "App Token" },
+      { key: "user_key", label: "User Key" },
+    ],
+  },
+  {
+    kind: "smtp",
+    label: "Email (SMTP)",
+    fields: [
+      { key: "host", label: "SMTP Host", placeholder: "smtp.gmail.com" },
+      { key: "port", label: "Port", placeholder: "587" },
+      { key: "username", label: "Username / Email" },
+      { key: "password", label: "Password", type: "password" },
+      { key: "from_email", label: "From Address" },
+      { key: "to_email", label: "To Address" },
+    ],
+  },
+];
+
 export default function Settings({ onClose }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("Format");
   const [s, setS] = useState<SettingsState>(DEFAULTS);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // ── Notification channels state ───────────────────────────────────────────
+  const [channels, setChannels] = useState<NotificationChannel[]>([]);
+  const [addingKind, setAddingKind] = useState<ChannelKind | "">("");
+  const [addingName, setAddingName] = useState("");
+  const [addingConfig, setAddingConfig] = useState<Record<string, string>>({});
+  const [addingInProgress, setAddingInProgress] = useState(false);
+  const [testingId, setTestingId] = useState<number | null>(null);
+  const [summaryInProgress, setSummaryInProgress] = useState(false);
 
   useEffect(() => {
     getSettings().then(({ settings }) => {
@@ -117,6 +194,7 @@ export default function Settings({ onClose }: Props) {
         Object.entries(settings).filter(([, v]) => v !== null)
       ) as Partial<SettingsState> }));
     }).catch(console.error);
+    listChannels().then(setChannels).catch(console.error);
   }, []);
 
   const set = (key: keyof SettingsState, value: string) =>
@@ -124,6 +202,51 @@ export default function Settings({ onClose }: Props) {
 
   const toggle = (key: keyof SettingsState) =>
     setS((prev) => ({ ...prev, [key]: prev[key] === "true" ? "false" : "true" }));
+
+  const handleAddChannel = async () => {
+    if (!addingKind || !addingName.trim()) return;
+    setAddingInProgress(true);
+    try {
+      const ch = await createChannel({
+        kind: addingKind,
+        name: addingName.trim(),
+        config_json: JSON.stringify(addingConfig),
+      });
+      setChannels((prev) => [...prev, ch]);
+      setAddingKind("");
+      setAddingName("");
+      setAddingConfig({});
+    } catch (e) { console.error(e); }
+    finally { setAddingInProgress(false); }
+  };
+
+  const handleToggleChannel = async (ch: NotificationChannel) => {
+    try {
+      const updated = await updateChannel(ch.id, { is_enabled: !ch.is_enabled });
+      setChannels((prev) => prev.map((c) => c.id === ch.id ? updated : c));
+    } catch (e) { console.error(e); }
+  };
+
+  const handleDeleteChannel = async (id: number) => {
+    try {
+      await deleteChannel(id);
+      setChannels((prev) => prev.filter((c) => c.id !== id));
+    } catch (e) { console.error(e); }
+  };
+
+  const handleTestChannel = async (id: number) => {
+    setTestingId(id);
+    try { await testChannel(id); }
+    catch (e) { console.error(e); }
+    finally { setTestingId(null); }
+  };
+
+  const handleSendSummary = async () => {
+    setSummaryInProgress(true);
+    try { await sendSummaryNow(); }
+    catch (e) { console.error(e); }
+    finally { setSummaryInProgress(false); }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -399,6 +522,100 @@ export default function Settings({ onClose }: Props) {
                     spellCheck={false}
                   />
                 </Field>
+              </div>
+            )}
+
+            {/* ── Notifications ── */}
+            {activeTab === "Notifications" && (
+              <div className={styles.fields}>
+
+                <SectionTitle>Event Suppression</SectionTitle>
+                <Row>
+                  <Toggle label="Download completed" checked={bool("notify_on_complete")} onChange={() => toggle("notify_on_complete")} />
+                  <Toggle label="Download failed" checked={bool("notify_on_failed")} onChange={() => toggle("notify_on_failed")} />
+                </Row>
+                <Row>
+                  <Toggle label="New video from subscription" checked={bool("notify_on_new_video")} onChange={() => toggle("notify_on_new_video")} />
+                  <Toggle label="Subscription check error" checked={bool("notify_on_subscription_error")} onChange={() => toggle("notify_on_subscription_error")} />
+                </Row>
+
+                <SectionTitle>Summary</SectionTitle>
+                <Row>
+                  <Toggle label="Send periodic summary" checked={bool("notify_summary_enabled")} onChange={() => toggle("notify_summary_enabled")} />
+                  <Field label="Interval (hours)">
+                    <input className={styles.inputSm} type="number" min="1" value={s.notify_summary_interval_hours} onChange={(e) => set("notify_summary_interval_hours", e.target.value)} />
+                  </Field>
+                </Row>
+                <button className={styles.presetBtn} onClick={handleSendSummary} disabled={summaryInProgress}>
+                  {summaryInProgress ? "Sending…" : "Send summary now"}
+                </button>
+
+                <SectionTitle>Channels</SectionTitle>
+
+                {/* Existing channels */}
+                {channels.length === 0 && (
+                  <p className={styles.fieldHint}>No channels configured. Add one below.</p>
+                )}
+                {channels.map((ch) => {
+                  const meta = CHANNEL_KINDS.find((k) => k.kind === ch.kind);
+                  return (
+                    <div key={ch.id} className={styles.channelRow}>
+                      <span className={styles.channelKind}>{meta?.label ?? ch.kind}</span>
+                      <span className={styles.channelName}>{ch.name}</span>
+                      <div className={styles.channelActions}>
+                        <button
+                          className={styles.presetBtn}
+                          onClick={() => handleTestChannel(ch.id)}
+                          disabled={testingId === ch.id}
+                        >
+                          {testingId === ch.id ? "Testing…" : "Test"}
+                        </button>
+                        <label className={styles.toggle} style={{ marginBottom: 0 }}>
+                          <span className={styles.toggleTrack} data-checked={ch.is_enabled} onClick={() => handleToggleChannel(ch)}>
+                            <span className={styles.toggleThumb} />
+                          </span>
+                        </label>
+                        <button className={styles.channelDelete} onClick={() => handleDeleteChannel(ch.id)}>✕</button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Add channel form */}
+                <div className={styles.addChannel}>
+                  <select
+                    className={styles.select}
+                    value={addingKind}
+                    onChange={(e) => { setAddingKind(e.target.value as ChannelKind | ""); setAddingConfig({}); }}
+                    style={{ maxWidth: 180 }}
+                  >
+                    <option value="">Add a channel…</option>
+                    {CHANNEL_KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}
+                  </select>
+
+                  {addingKind && (
+                    <>
+                      <Field label="Channel name">
+                        <input className={styles.input} value={addingName} onChange={(e) => setAddingName(e.target.value)} placeholder="My Slack" />
+                      </Field>
+                      {CHANNEL_KINDS.find((k) => k.kind === addingKind)?.fields.map((f) => (
+                        <Field key={f.key} label={f.label}>
+                          <input
+                            className={styles.input}
+                            type={f.type ?? "text"}
+                            placeholder={f.placeholder}
+                            value={addingConfig[f.key] ?? ""}
+                            onChange={(e) => setAddingConfig((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                          />
+                        </Field>
+                      ))}
+                      <button className={styles.saveBtn} style={{ marginTop: 4 }} onClick={handleAddChannel} disabled={addingInProgress}>
+                        {addingInProgress ? "Adding…" : "Add channel"}
+                      </button>
+                    </>
+                  )}
+                </div>
+
               </div>
             )}
 

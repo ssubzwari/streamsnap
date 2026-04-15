@@ -433,3 +433,59 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ── Notification channels ───────────────────────────────────────────────── */
+
+.channelRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-hi);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.channelKind {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-accent);
+  min-width: 80px;
+}
+
+.channelName {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  flex: 1;
+}
+
+.channelActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.channelDelete {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.channelDelete:hover {
+  color: var(--color-error);
+}
+
+.addChannel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+}
