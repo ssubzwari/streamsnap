@@ -2,23 +2,79 @@
 
 A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download videos and audio from YouTube and 1000+ other sites, subscribe to playlists with automatic polling, and watch real-time download progress in the browser.
 
+[![Build & Push Docker Image](https://github.com/ssubzwari/metubeplus/actions/workflows/docker.yml/badge.svg)](https://github.com/ssubzwari/metubeplus/actions/workflows/docker.yml)
+
+---
+
 ## Features
 
+### Downloads
 - **Video & audio downloads** — single videos, channels, or playlists
 - **Format picker** — Type / Codec / Format / Quality dropdowns with smart fallback format specs
-- **Playlist downloads** — paste a playlist URL in the Download field and all videos are enqueued into a named subfolder automatically
-- **Subscriptions** — subscribe to a playlist/channel and new videos are downloaded automatically on a configurable interval
-- **Per-playlist folders** — each subscription and playlist download gets its own folder named after the playlist
-- **Best quality by default** — uses `bestvideo*+bestaudio/best` with ffmpeg merging; gracefully falls back when filters are incompatible
+- **Playlist downloads** — paste a playlist URL and all videos are enqueued into a named subfolder
 - **Real-time progress** — live speed, ETA, and progress bars via WebSocket (Socket.IO)
 - **Bulk actions** — checkboxes on every row; clear selected, clear completed, clear failed, retry failed
 - **Sort & filter** — newest/oldest sort toggle on the Completed table
-- **Open file** — click Open on any completed download to reveal the file in Explorer
-- **Advanced options** — output folder, custom name profiles, auto-start, items limit, option presets, cookie upload, import/export URLs
+- **Open file** — click the folder icon on any completed download to reveal the file in Explorer
 
-## Prerequisites
+### Subscriptions
+- **Channel/playlist subscriptions** — new videos are downloaded automatically on a configurable interval
+- **Per-playlist folders** — each subscription and playlist download gets its own named subfolder
+- **Backfill control** — choose whether to download existing videos or only future ones on subscribe
 
-Install these and make sure they are on your PATH:
+### Notifications
+- **In-app toasts** — slide-in notifications for completed, failed, and new-video events
+- **Browser notifications** — native OS-level alerts via the Web Notifications API
+- **External channels** — push alerts to any combination of:
+  - **SMTP** — email via any mail server
+  - **Slack** — incoming webhook
+  - **Discord** — webhook
+  - **Telegram** — Bot API
+  - **Pushover** — mobile push notifications
+- **Event suppression** — independently mute: Download completed / Download failed / New video from subscription / Subscription check error
+- **Periodic summary** — configurable digest interval (hours) sent to all enabled channels; trigger manually with "Send summary now"
+
+### Settings (8-tab UI)
+- **Format** — format spec, quality cap, codec preferences, merge container, format sort
+- **Subtitles** — write/embed subs, language selection, auto-subs, format conversion
+- **Metadata & Thumbnails** — embed thumbnail, write info JSON, embed chapters and metadata
+- **Post-processing** — SponsorBlock category removal, ffmpeg path, keep-video toggle
+- **Download** — concurrent fragments, retries, rate limit, socket timeout, partial resume
+- **Output** — download paths, output template with variable reference, restrict filenames
+- **Auth** — cookies-from-browser, username/password (server-side only)
+- **Advanced** — raw `YoutubeDL` options JSON escape hatch
+
+### Deployment
+- **Docker** — single-container image with bundled frontend; multi-arch (`amd64` + `arm64`)
+- **GitHub Actions** — automated build & push to GitHub Container Registry on every commit
+- **Self-hosted dev** — backend on uvicorn + frontend on Vite dev server
+
+---
+
+## Quick Start — Docker (recommended)
+
+```bash
+# Pull and run the latest image
+docker compose up -d
+```
+
+The `docker-compose.yml` pulls from GitHub Container Registry automatically. Downloads persist in `./downloads/` and the database in a named Docker volume.
+
+```bash
+# Pin a specific build
+IMAGE_TAG=sha-04bdf92 docker compose up -d
+
+# Custom download folder
+DOWNLOAD_DIR=/media/nas/downloads docker compose up -d
+```
+
+Image: `ghcr.io/ssubzwari/metubeplus:latest`
+
+---
+
+## Quick Start — Local Dev
+
+### Prerequisites
 
 | Tool | Version | Install |
 |------|---------|---------|
@@ -27,9 +83,7 @@ Install these and make sure they are on your PATH:
 | yt-dlp | latest | `pip install yt-dlp` |
 | ffmpeg | any | [ffmpeg.org](https://ffmpeg.org/download.html) or `winget install Gyan.FFmpeg` |
 
-> **Note:** ffmpeg is required for 1080p+ video quality (merging separate video+audio streams). Without it, downloads are limited to 720p progressive formats.
-
-## Setup
+> **Note:** ffmpeg is required for 1080p+ quality (merging separate video+audio streams).
 
 ### Backend
 
@@ -58,41 +112,56 @@ npm run dev
 
 Open **http://localhost:5173** in your browser.
 
+---
+
 ## Project Structure
 
 ```
 MetubePlus/
+├── .github/
+│   └── workflows/
+│       └── docker.yml           # Build & push to ghcr.io on push to main
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI + Socket.IO app factory
+│   │   ├── main.py              # FastAPI + Socket.IO app factory, SPA fallback
 │   │   ├── config.py            # Settings (DB path, download dir, concurrency)
 │   │   ├── db.py                # Async SQLAlchemy engine + session
-│   │   ├── models.py            # ORM models
+│   │   ├── models.py            # ORM models (Download, Subscription, NotificationChannel…)
 │   │   ├── schemas.py           # Pydantic DTOs
 │   │   ├── events.py            # WebSocket event constants
 │   │   ├── ws.py                # Socket.IO server + emit helpers
 │   │   ├── routes/
-│   │   │   ├── downloads.py     # Download CRUD + playlist endpoint + open-file
+│   │   │   ├── downloads.py     # Download CRUD + playlist + open-file
 │   │   │   ├── subscriptions.py # Subscription CRUD + manual check
 │   │   │   ├── metadata.py      # URL metadata resolution
-│   │   │   ├── notifications.py # Notification list + mark-read
-│   │   │   └── settings.py      # Key/value app settings
+│   │   │   ├── notifications.py # Notifications + channel CRUD + test + summary
+│   │   │   └── settings.py      # Key/value app settings (40+ yt-dlp options)
 │   │   ├── services/
-│   │   │   ├── download_manager.py    # ThreadPoolExecutor queue + progress relay
+│   │   │   ├── download_manager.py    # ProcessPoolExecutor queue + progress relay
 │   │   │   ├── subscription_worker.py # APScheduler polling jobs
-│   │   │   └── notifications.py       # Notification creation helper
+│   │   │   ├── notifications.py       # Notification creation + WS emit
+│   │   │   └── external_notifier.py   # SMTP / Slack / Discord / Telegram / Pushover
 │   │   └── ytdl/
-│   │       ├── service.py       # yt-dlp wrapper (metadata + download)
-│   │       └── progress.py      # progress_hook → queue adapter
+│   │       ├── service.py       # yt-dlp wrapper (metadata + download + settings apply)
+│   │       └── progress.py      # progress_hook → queue adapter (throttled)
 │   └── pyproject.toml
-└── frontend/
-    ├── src/
-    │   ├── pages/Dashboard/     # Main UI (index.tsx + CSS Module)
-    │   ├── api/                 # fetch wrappers for each backend route
-    │   ├── ws/                  # Socket.IO client + event types
-    │   └── styles/              # tokens.css, global.css, reset.css
-    └── vite.config.ts           # Dev server with /api + /socket.io proxy
+├── frontend/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Dashboard/       # Main UI — downloads, subscriptions, format picker
+│   │   │   └── Settings/        # 9-tab settings modal (Format → Notifications)
+│   │   ├── components/
+│   │   │   ├── Toast/           # In-app toasts + browser Notification API
+│   │   │   └── Skeleton/        # Shimmer loading placeholders
+│   │   ├── api/                 # fetch wrappers (downloads, subscriptions, notifications…)
+│   │   ├── ws/                  # Socket.IO singleton + TypeScript event types
+│   │   └── styles/              # tokens.css, global.css, reset.css
+│   └── vite.config.ts           # Dev proxy → /api + /socket.io → :8000
+├── Dockerfile                   # Multi-stage: node build → python:3.12-slim + ffmpeg
+└── docker-compose.yml           # Pulls ghcr.io image; bind-mounts downloads + data volume
 ```
+
+---
 
 ## Architecture
 
@@ -100,16 +169,18 @@ MetubePlus/
 React Frontend (Vite + TypeScript + CSS Modules)
     ↓ REST (fetch)   ↓ Socket.IO
 FastAPI Application (port 8000)
-├── Download Manager  (ThreadPoolExecutor — keeps yt-dlp off asyncio loop)
-├── Subscription Worker  (APScheduler AsyncIOScheduler)
-├── Notification Dispatcher
+├── Download Manager    (ProcessPoolExecutor — yt-dlp off asyncio loop)
+├── Subscription Worker (APScheduler AsyncIOScheduler)
+├── External Notifier   (SMTP / Slack / Discord / Telegram / Pushover)
 └── Routes: /api/downloads  /api/subscriptions  /api/metadata
-              /api/settings  /api/notifications
+              /api/settings  /api/notifications  /api/notifications/channels
       ↓
 SQLite via SQLAlchemy 2.x (async + aiosqlite)
       ↓
 yt-dlp  (YoutubeDL class, not subprocess)
 ```
+
+---
 
 ## WebSocket Events
 
@@ -121,18 +192,38 @@ yt-dlp  (YoutubeDL class, not subprocess)
 | `download:failed` | server→client | Worker exception |
 | `download:canceled` | server→client | User canceled |
 | `subscription:checked` | server→client | APScheduler poll complete |
-| `subscription:new_video` | server→client | New video detected |
-| `notification:created` | server→client | Any notification |
+| `subscription:new_video` | server→client | New video detected in playlist |
+| `notification:created` | server→client | Any notification (drives toasts + browser alert) |
+
+---
 
 ## Configuration
 
-Edit `backend/app/config.py` or set environment variables:
+### Environment variables
 
-| Setting | Default | Description |
-|---------|---------|-------------|
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `DB_URL` | `sqlite+aiosqlite:///./metubeplus.db` | Database path |
 | `DOWNLOAD_DIR` | `./downloads` | Root download folder |
 | `MAX_CONCURRENT_DOWNLOADS` | `3` | Parallel download workers |
+| `IMAGE_TAG` | `latest` | Docker image tag (compose only) |
+| `PORT` | `8000` | Host port to expose (compose only) |
+
+### Notification channels
+
+Configure external notification channels in **Settings → Notifications**. Each channel requires:
+
+| Kind | Required config |
+|------|----------------|
+| SMTP | host, port, username, password, from address, to address |
+| Slack | Incoming Webhook URL |
+| Discord | Webhook URL |
+| Telegram | Bot token + Chat ID |
+| Pushover | App token + User key |
+
+Channels can be individually enabled/disabled and tested with a sample message.
+
+---
 
 ## Design System
 
@@ -142,10 +233,14 @@ All visual tokens are in `frontend/src/styles/tokens.css`. No Tailwind, no CSS-i
 |-------|-------|
 | Background | `#0A0A0B` |
 | Surface | `#141416` |
-| Accent | `#7C5CFF` |
-| Success | `#3FD97F` |
-| Error | `#FF5C5C` |
+| Accent (purple) | `#7C5CFF` |
+| Success (green) | `#3FD97F` |
+| Warn (amber) | `#FFB84C` |
+| Error (red) | `#FF5C5C` |
 | Font | Plus Jakarta Sans |
+| Motion easing | `cubic-bezier(0.16, 1, 0.3, 1)` |
+
+---
 
 ## License
 
