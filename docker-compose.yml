@@ -8,13 +8,21 @@ services:
     ports:
       - "${PORT:-8000}:8000"
     volumes:
+      # Video downloads — bind-mount so files are directly accessible on the host
       - ${DOWNLOAD_DIR:-./downloads}:/downloads
+      # SQLite database — named volume keeps DB across image upgrades
       - metubeplus-data:/data
+      # yt-dlp package — named volume so "Update to latest" in the UI persists
+      # across container restarts without rebuilding the image.
+      # Delete this volume to reset yt-dlp back to the image's bundled version.
+      - metubeplus-ytdlp:/ytdlp
     environment:
       - DOWNLOAD_DIR=/downloads
       - DB_URL=sqlite+aiosqlite:////data/metubeplus.db
+      - YTDLP_DIR=/ytdlp
       - MAX_CONCURRENT_DOWNLOADS=${MAX_CONCURRENT_DOWNLOADS:-3}
     restart: unless-stopped
 
 volumes:
   metubeplus-data:
+  metubeplus-ytdlp:
