@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getSettings, updateSettings } from "@/api/settings";
+import { getSettings, getYtdlpVersion, updateSettings, updateYtdlp, type YtdlpVersionInfo } from "@/api/settings";
 import {
   type ChannelKind,
   type NotificationChannel,
@@ -188,6 +188,12 @@ export default function Settings({ onClose }: Props) {
   const [testingId, setTestingId] = useState<number | null>(null);
   const [summaryInProgress, setSummaryInProgress] = useState(false);
 
+  // ── yt-dlp updater state ──────────────────────────────────────────────────
+  const [ytdlpInfo, setYtdlpInfo] = useState<YtdlpVersionInfo | null>(null);
+  const [ytdlpUpdating, setYtdlpUpdating] = useState(false);
+  const [ytdlpResult, setYtdlpResult] = useState<{ updated: boolean; new_version: string } | null>(null);
+  const [ytdlpError, setYtdlpError] = useState<string | null>(null);
+
   useEffect(() => {
     getSettings().then(({ settings }) => {
       setS((prev) => ({ ...prev, ...Object.fromEntries(
@@ -195,6 +201,7 @@ export default function Settings({ onClose }: Props) {
       ) as Partial<SettingsState> }));
     }).catch(console.error);
     listChannels().then(setChannels).catch(console.error);
+    getYtdlpVersion().then(setYtdlpInfo).catch(console.error);
   }, []);
 
   const set = (key: keyof SettingsState, value: string) =>
@@ -239,6 +246,21 @@ export default function Settings({ onClose }: Props) {
     try { await testChannel(id); }
     catch (e) { console.error(e); }
     finally { setTestingId(null); }
+  };
+
+  const handleUpdateYtdlp = async () => {
+    setYtdlpUpdating(true);
+    setYtdlpResult(null);
+    setYtdlpError(null);
+    try {
+      const res = await updateYtdlp();
+      setYtdlpResult({ updated: res.updated, new_version: res.new_version });
+      setYtdlpInfo((prev) => prev ? { ...prev, version: res.new_version } : prev);
+    } catch (e: unknown) {
+      setYtdlpError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setYtdlpUpdating(false);
+    }
   };
 
   const handleSendSummary = async () => {
@@ -512,12 +534,49 @@ export default function Settings({ onClose }: Props) {
             {/* ── Advanced ── */}
             {activeTab === "Advanced" && (
               <div className={styles.fields}>
+
+                <SectionTitle>yt-dlp</SectionTitle>
+                <div className={styles.ytdlpCard}>
+                  <div className={styles.ytdlpMeta}>
+                    <span className={styles.ytdlpLabel}>Installed version</span>
+                    <span className={styles.ytdlpVersion}>
+                      {ytdlpInfo ? ytdlpInfo.version : "…"}
+                    </span>
+                    {ytdlpInfo?.ytdlp_dir && (
+                      <span className={styles.ytdlpDir} title={ytdlpInfo.ytdlp_dir}>
+                        📁 {ytdlpInfo.ytdlp_dir}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    className={styles.saveBtn}
+                    onClick={handleUpdateYtdlp}
+                    disabled={ytdlpUpdating}
+                    style={{ whiteSpace: "nowrap" }}
+                  >
+                    {ytdlpUpdating ? "Updating…" : "Update to latest"}
+                  </button>
+                </div>
+                {ytdlpResult && (
+                  <p className={styles.ytdlpStatus} data-updated={ytdlpResult.updated}>
+                    {ytdlpResult.updated
+                      ? `✓ Updated to ${ytdlpResult.new_version}`
+                      : `✓ Already up to date (${ytdlpResult.new_version})`}
+                  </p>
+                )}
+                {ytdlpError && (
+                  <p className={styles.ytdlpStatus} data-updated="false">
+                    ✕ {ytdlpError}
+                  </p>
+                )}
+
+                <SectionTitle>Raw Options</SectionTitle>
                 <Field label="Raw YoutubeDL Options (JSON)" hint="Merged last — overrides all other settings. Must be a valid JSON object.">
                   <textarea
                     className={styles.textarea}
                     value={s.raw_options_json}
                     onChange={(e) => set("raw_options_json", e.target.value)}
-                    rows={12}
+                    rows={10}
                     placeholder={'{\n  "geo_bypass": true,\n  "quiet": false\n}'}
                     spellCheck={false}
                   />

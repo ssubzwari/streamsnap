@@ -10,5 +10,10 @@ class Settings(BaseSettings):
     DOWNLOAD_DIR: str = "./downloads"
     MAX_CONCURRENT_DOWNLOADS: int = 3
 
+    # Directory where yt-dlp is installed as an isolated Python package.
+    # Empty string = use the system/venv-installed yt-dlp (local dev default).
+    # In Docker this is set to /ytdlp (a named volume) so updates persist.
+    YTDLP_DIR: str = ""
+
 
 settings = Settings()
