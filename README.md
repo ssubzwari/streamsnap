@@ -15,18 +15,20 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 - **Real-time progress** — live speed, ETA, and progress bars via WebSocket (Socket.IO)
 - **Bulk actions** — checkboxes on every row; clear selected, clear completed, clear failed, retry failed
 - **Sort & filter** — newest/oldest sort toggle on the Completed table
-- **Open file** — click the folder icon on any completed download to reveal the file in Explorer
+- **Play in browser** — click the ▶ icon to stream the finished file inline in a new tab (HTTP Range → native `<video>` with seek)
+- **Open file** — folder icon reveals the file in the OS file manager (cross-platform: Explorer / Finder / xdg-open)
 
 ### Subscriptions
 - **Channel/playlist subscriptions** — new videos are downloaded automatically on a configurable interval
 - **Per-playlist folders** — each subscription and playlist download gets its own named subfolder
 - **Backfill control** — choose whether to download existing videos or only future ones on subscribe
+- **Per-subscription mute** — bell-icon toggle on each row (and at create time) silences alerts for that subscription while downloads still run
 
 ### Notifications
 - **In-app toasts** — slide-in notifications for completed, failed, and new-video events
 - **Browser notifications** — native OS-level alerts via the Web Notifications API
 - **External channels** — push alerts to any combination of:
-  - **SMTP** — email via any mail server
+  - **SMTP** — email via any mail server (auto-detects implicit SSL on port 465 vs STARTTLS on 587; plain mode available for LAN)
   - **Slack** — incoming webhook
   - **Discord** — webhook
   - **Telegram** — Bot API
@@ -43,6 +45,7 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 - **Output** — download paths, output template with variable reference, restrict filenames
 - **Auth** — cookies-from-browser, username/password (server-side only)
 - **Advanced** — raw `YoutubeDL` options JSON escape hatch
+- **yt-dlp updater** — one-click upgrade of the bundled yt-dlp to the latest release (works locally and inside Docker via a dedicated `/ytdlp` volume so the update survives container restarts)
 
 ### Deployment
 - **Docker** — single-container image with bundled frontend; multi-arch (`amd64` + `arm64`)
@@ -58,7 +61,11 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 docker compose up -d
 ```
 
-The `docker-compose.yml` pulls from GitHub Container Registry automatically. Downloads persist in `./downloads/` and the database in a named Docker volume.
+The `docker-compose.yml` pulls from GitHub Container Registry automatically. Three independent mounts keep data isolated:
+
+- `${DOWNLOAD_DIR:-./downloads}` → `/downloads` — bind-mount for finished files
+- `metubeplus-data` (named volume) → `/data` — SQLite database and app state
+- `metubeplus-ytdlp` (named volume) → `/ytdlp` — yt-dlp install, so in-app updates persist across container restarts
 
 ```bash
 # Pin a specific build
@@ -131,7 +138,7 @@ MetubePlus/
 │   │   ├── events.py            # WebSocket event constants
 │   │   ├── ws.py                # Socket.IO server + emit helpers
 │   │   ├── routes/
-│   │   │   ├── downloads.py     # Download CRUD + playlist + open-file
+│   │   │   ├── downloads.py     # Download CRUD + playlist + open-file + inline stream
 │   │   │   ├── subscriptions.py # Subscription CRUD + manual check
 │   │   │   ├── metadata.py      # URL metadata resolution
 │   │   │   ├── notifications.py # Notifications + channel CRUD + test + summary
