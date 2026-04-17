@@ -176,13 +176,19 @@ class DownloadManager:
                 download = await self._get_download(did)
                 if download:
                     from app.schemas import DownloadInfo
-                    await emit_download_completed(DownloadInfo.model_validate(download).model_dump(mode="json"))
+                    await emit_download_completed(
+                        DownloadInfo.model_validate(download).model_dump(mode="json")
+                    )
+                    await self._notify_completion(download, success=True)
                 self._cleanup(did)
 
             elif msg_type == "error":
                 error = msg.get("error", "Unknown error")
                 await self._update_db(did, status="failed", error_message=error)
                 await emit_download_failed(dataclasses.asdict(DownloadFailedPayload(id=did, error=error)))
+                download = await self._get_download(did)
+                if download:
+                    await self._notify_completion(download, success=False, error=error)
                 self._cleanup(did)
 
             elif msg_type == "canceled":
@@ -220,6 +226,99 @@ class DownloadManager:
         SessionLocal = get_sessionmaker()
         async with SessionLocal() as session:
             return await session.get(Download, download_id)
+
+    async def _notify_completion(self, download, success: bool, error: str | None = None) -> None:
+        """
+        Create a Notification row for a completed/failed download.
+        This also triggers external channel dispatch + respects the per-
+        subscription `notify` flag (individual-file summary source).
+
+        When a download belongs to a subscription and no sibling download from
+        the same subscription is still queued/running, emit a playlist-summary
+        notification covering all recently-finished siblings.
+        """
+        from sqlalchemy import and_, select
+        from app.models import Download, Subscription
+        from app.services.notifications import create_notification
+
+        sub_id = download.subscription_id
+
+        # Respect per-subscription mute
+        if sub_id is not None:
+            SessionLocal = get_sessionmaker()
+            async with SessionLocal() as session:
+                sub = await session.get(Subscription, sub_id)
+                if sub is not None and not sub.notify:
+                    return
+                sub_title = sub.title if sub is not None else None
+        else:
+            sub_title = None
+
+        title_txt = download.title or download.url
+
+        # 1. Individual-file notification
+        if success:
+            await create_notification(
+                kind="completed",
+                title=f"Download completed: {title_txt}",
+                body=download.output_path or None,
+                payload={"download_id": download.id, "subscription_id": sub_id},
+            )
+        else:
+            await create_notification(
+                kind="failed",
+                title=f"Download failed: {title_txt}",
+                body=error,
+                payload={"download_id": download.id, "subscription_id": sub_id},
+            )
+
+        # 2. Playlist summary — only when the whole batch finished
+        if sub_id is None:
+            return
+
+        SessionLocal = get_sessionmaker()
+        async with SessionLocal() as session:
+            pending = await session.execute(
+                select(Download).where(
+                    and_(
+                        Download.subscription_id == sub_id,
+                        Download.status.in_(("queued", "downloading")),
+                    )
+                )
+            )
+            if pending.scalars().first() is not None:
+                return  # more siblings still in-flight — wait for them
+
+            result = await session.execute(
+                select(Download)
+                .where(Download.subscription_id == sub_id)
+                .order_by(Download.updated_at.desc())
+                .limit(50)
+            )
+            siblings = list(result.scalars())
+
+        if not siblings:
+            return
+
+        done = [d for d in siblings if d.status == "completed"]
+        failed = [d for d in siblings if d.status == "failed"]
+        if not done and not failed:
+            return
+
+        label = sub_title or f"subscription #{sub_id}"
+        summary_title = f"Playlist summary: {label} — {len(done)} done, {len(failed)} failed"
+        lines = []
+        for d in done[:20]:
+            lines.append(f"✓ {d.title or d.url}")
+        for d in failed[:10]:
+            lines.append(f"✕ {d.title or d.url}: {d.error_message or 'failed'}")
+
+        await create_notification(
+            kind="completed",
+            title=summary_title,
+            body="\n".join(lines) if lines else None,
+            payload={"subscription_id": sub_id, "done": len(done), "failed": len(failed)},
+        )
 
 
 download_manager = DownloadManager()

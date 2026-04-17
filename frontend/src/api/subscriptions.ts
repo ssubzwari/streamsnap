@@ -6,12 +6,14 @@ export interface SubscriptionCreate {
   check_interval_minutes?: number;
   format_spec?: string;
   download_existing?: boolean;
+  notify?: boolean;
 }
 
 export interface SubscriptionUpdate {
   check_interval_minutes?: number;
   format_spec?: string;
   is_active?: boolean;
+  notify?: boolean;
 }
 
 export async function listSubscriptions(): Promise<SubscriptionInfo[]> {

@@ -1,7 +1,9 @@
 import asyncio
+import mimetypes
 import pathlib
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,9 +108,17 @@ async def open_download(
     download_id: int,
     session: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Open the downloaded file's containing folder."""
+    """Open the downloaded file's containing folder (cross-platform).
+
+    Windows  → explorer /select,<file>
+    macOS    → open -R <file>
+    Linux    → xdg-open <folder>
+    Headless containers that lack any of these return 501.
+    """
     import os
+    import shutil
     import subprocess
+    import sys
 
     download = await session.get(Download, download_id)
     if not download:
@@ -116,15 +126,59 @@ async def open_download(
     if not download.output_path or not os.path.exists(download.output_path):
         raise HTTPException(status_code=404, detail="File not found on disk")
 
-    # Open the containing folder with the file selected (Windows)
-    folder = os.path.dirname(os.path.abspath(download.output_path))
     filepath = os.path.abspath(download.output_path)
+    folder = os.path.dirname(filepath)
+
     try:
-        subprocess.Popen(["explorer", "/select,", filepath])
-    except Exception:
-        subprocess.Popen(["explorer", folder])
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", f"/select,{filepath}"])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", filepath])
+        else:
+            if not shutil.which("xdg-open"):
+                raise HTTPException(
+                    status_code=501,
+                    detail="No file manager available on this host (headless container?). Use the Play button instead.",
+                )
+            subprocess.Popen(["xdg-open", folder])
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to open file manager: {exc}")
 
     return Response(status_code=204)
+
+
+@router.get("/{download_id}/stream")
+async def stream_download(
+    download_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    """Stream the downloaded file inline so it plays directly in a browser tab.
+
+    Starlette's FileResponse handles HTTP Range natively → the browser's
+    native <video> element gets seek support for free.
+    """
+    import os
+
+    download = await session.get(Download, download_id)
+    if not download:
+        raise HTTPException(status_code=404, detail="Download not found")
+    if not download.output_path or not os.path.exists(download.output_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    filepath = os.path.abspath(download.output_path)
+    filename = os.path.basename(filepath)
+    media_type, _ = mimetypes.guess_type(filepath)
+    if media_type is None:
+        media_type = "application/octet-stream"
+
+    return FileResponse(
+        filepath,
+        media_type=media_type,
+        filename=filename,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 @router.get("/{download_id}", response_model=DownloadInfo)
