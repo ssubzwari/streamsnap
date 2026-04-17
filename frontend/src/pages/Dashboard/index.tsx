@@ -904,12 +904,12 @@ export default function Dashboard() {
           </div>
 
           {loadingDownloads ? (
-            <table className={styles.table}>
+            <div className={styles.tableScroll}><table className={styles.table}>
               <tbody>
                 <SkeletonRow />
                 <SkeletonRow />
               </tbody>
-            </table>
+            </table></div>
           ) : activeDownloads.length === 0 ? (
             <div className={styles.emptyState}>
               <svg className={styles.emptyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -920,7 +920,7 @@ export default function Dashboard() {
               <p className={styles.emptyHint}>Paste a URL above and click Download to get started.</p>
             </div>
           ) : (
-            <table className={styles.table}>
+            <div className={styles.tableScroll}><table className={styles.table}>
               <colgroup>
                 <col style={{ width: "36px" }} />
                 <col style={{ width: "100%" }} />
@@ -983,7 +983,7 @@ export default function Dashboard() {
                     <td className={styles.metaCell}>
                       {d.vcodec === "none" ? "Audio" : "Video"}
                     </td>
-                    <td className={styles.metaCell}>{qualityLabel(d)}</td>
+                    <td className={`${styles.metaCell} ${styles.qualityCell}`} title={qualityLabel(d)}>{qualityLabel(d)}</td>
                     <td className={styles.metaCell}>{d.speed ?? "\u2014"}</td>
                     <td className={styles.metaCell}>
                       {d.eta != null ? `${d.eta}s` : "\u2014"}
@@ -1002,7 +1002,7 @@ export default function Dashboard() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </section>
 
@@ -1065,7 +1065,7 @@ export default function Dashboard() {
               <p className={styles.emptyHint}>Finished downloads will appear here.</p>
             </div>
           ) : (
-            <table className={styles.table}>
+            <div className={styles.tableScroll}><table className={styles.table}>
               <colgroup>
                 <col style={{ width: "36px" }} />
                 <col style={{ width: "40%" }} />
@@ -1115,9 +1115,22 @@ export default function Dashboard() {
                           <img className={styles.thumb} src={d.thumbnail} alt="" loading="lazy" />
                         )}
                         <div className={styles.videoCellText}>
-                          <span className={styles.videoTitle} title={d.title ?? d.url}>
-                            {d.title ?? d.url}
-                          </span>
+                          {d.status === "completed" && d.output_path ? (
+                            <button
+                              type="button"
+                              className={styles.videoTitleLink}
+                              title={`Play ${d.title ?? d.url}`}
+                              onClick={() =>
+                                window.open(`/api/downloads/${d.id}/stream`, "_blank")
+                              }
+                            >
+                              {d.title ?? d.url}
+                            </button>
+                          ) : (
+                            <span className={styles.videoTitle} title={d.title ?? d.url}>
+                              {d.title ?? d.url}
+                            </span>
+                          )}
                           {d.status === "failed" && d.error_message && (
                             <span className={styles.errorInline}>{d.error_message}</span>
                           )}
@@ -1127,7 +1140,7 @@ export default function Dashboard() {
                     <td className={styles.metaCell}>
                       {d.vcodec === "none" ? "Audio" : "Video"}
                     </td>
-                    <td className={styles.metaCell}>{qualityLabel(d)}</td>
+                    <td className={`${styles.metaCell} ${styles.qualityCell}`} title={qualityLabel(d)}>{qualityLabel(d)}</td>
                     <td className={styles.metaCell}>{codecLabel(d)}</td>
                     <td className={styles.metaCell}>{formatBytes(d.filesize)}</td>
                     <td className={styles.metaCell}>{formatDate(d.updated_at)}</td>
@@ -1165,7 +1178,7 @@ export default function Dashboard() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </section>
 
@@ -1252,12 +1265,12 @@ export default function Dashboard() {
           )}
 
           {loadingSubs ? (
-            <table className={styles.table}>
+            <div className={styles.tableScroll}><table className={styles.table}>
               <tbody>
                 <SkeletonRow />
                 <SkeletonRow />
               </tbody>
-            </table>
+            </table></div>
           ) : subs.length === 0 && !addSubOpen ? (
             <div className={styles.emptyState}>
               <svg className={styles.emptyIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -1267,7 +1280,7 @@ export default function Dashboard() {
               <p className={styles.emptyHint}>Subscribe to a playlist or channel to auto-download new videos.</p>
             </div>
           ) : (
-            <table className={styles.table}>
+            <div className={styles.tableScroll}><table className={styles.table}>
               <colgroup>
                 <col style={{ width: "36px" }} />
                 <col style={{ width: "28%" }} />
@@ -1369,7 +1382,7 @@ export default function Dashboard() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </section>
       </main>

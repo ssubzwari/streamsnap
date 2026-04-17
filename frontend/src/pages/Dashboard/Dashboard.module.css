@@ -427,6 +427,14 @@
   overflow: hidden;
 }
 
+/* Wraps the table so overflow scrolls horizontally instead of clipping
+   columns. The long format_spec string in the Quality column was pushing
+   rightmost columns (Speed / ETA / Actions) off-screen. */
+.tableScroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .sectionHeader {
   display: flex;
   align-items: center;
@@ -519,6 +527,40 @@
   color: var(--color-text-muted);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+/* Quality column can hold long raw format specs like
+   "bestvideo*[ext=webm]+bestaudio/..." — cap + ellipsis keeps the table
+   from ballooning past the viewport. Hover for the full value. */
+.qualityCell {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Clickable filename — becomes the primary "play" affordance for
+   completed downloads. Matches .videoTitle styling but adds hover
+   affordance. */
+.videoTitleLink {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  display: block;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.videoTitleLink:hover,
+.videoTitleLink:focus-visible {
+  color: var(--color-accent);
+  outline: none;
 }
 
 .urlTruncate {
