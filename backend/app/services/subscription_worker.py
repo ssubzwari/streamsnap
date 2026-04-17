@@ -76,7 +76,16 @@ async def check_subscription(subscription_id: int) -> None:
         )
         seen_ids = set(result.scalars())
 
-        new_entries = [e for e in entries if e["id"] not in seen_ids]
+        # Dedupe within this poll too — some playlists surface the same
+        # video twice in a single extraction.
+        new_entries = []
+        _new_ids: set[str] = set()
+        for e in entries:
+            eid = e.get("id")
+            if not eid or eid in seen_ids or eid in _new_ids:
+                continue
+            _new_ids.add(eid)
+            new_entries.append(e)
 
         for entry in new_entries:
             video_id = entry["id"]

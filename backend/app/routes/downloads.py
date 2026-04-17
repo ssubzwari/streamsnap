@@ -61,6 +61,18 @@ async def download_playlist(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    # Dedupe by video id so a playlist that lists the same video twice
+    # doesn't enqueue two downloads writing to the same output path.
+    _seen: set[str] = set()
+    deduped: list[dict] = []
+    for entry in playlist_data["entries"]:
+        vid = entry.get("id")
+        if not vid or vid in _seen:
+            continue
+        _seen.add(vid)
+        deduped.append(entry)
+    playlist_data["entries"] = deduped
+
     # Create per-playlist folder
     folder_name = safe_folder_name(playlist_data["title"])
     download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)

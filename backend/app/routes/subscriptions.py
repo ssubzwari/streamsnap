@@ -43,6 +43,19 @@ async def create_subscription(
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    # Dedupe entries by video id. Some playlists (especially "Latest" /
+    # community channel tabs) surface the same video twice, which would
+    # violate seen_videos(subscription_id, video_id) UNIQUE on insert.
+    _seen_ids: set[str] = set()
+    deduped_entries: list[dict] = []
+    for entry in playlist_data["entries"]:
+        vid = entry.get("id")
+        if not vid or vid in _seen_ids:
+            continue
+        _seen_ids.add(vid)
+        deduped_entries.append(entry)
+    playlist_data["entries"] = deduped_entries
+
     # Create per-playlist download folder
     folder_name = safe_folder_name(playlist_data["title"])
     download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
@@ -65,8 +78,11 @@ async def create_subscription(
         notify=req.notify,
     )
     session.add(sub)
-    await session.commit()
-    await session.refresh(sub)
+    # Flush (not commit) so sub.id is assigned while we're still in one
+    # atomic transaction. If the seen_videos backfill or download enqueue
+    # raises below, the whole subscription rolls back — no orphan row left
+    # behind to block the user from retrying under the 409 dedupe check.
+    await session.flush()
 
     # Backfill seen_videos
     for entry in playlist_data["entries"]:
