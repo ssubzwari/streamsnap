@@ -433,7 +433,8 @@ export default function Dashboard() {
         url: trimmed,
         check_interval_minutes: parseInt(subCheckInterval) || 60,
         format_spec: buildFormatSpec(type, quality, format, codec),
-        download_existing: false,
+        download_existing: subDownloadExisting,
+        notify: subNotify,
       });
       dispatchSubs({ type: "ADD", sub });
       setUrl("");
@@ -674,6 +675,26 @@ export default function Dashboard() {
             >
               Subscribe
             </button>
+          </div>
+
+          {/* ── Subscribe-only toggles (ignored by the Download button) ── */}
+          <div className={styles.subscribeOptions}>
+            <label>
+              <input
+                type="checkbox"
+                checked={subDownloadExisting}
+                onChange={(e) => setSubDownloadExisting(e.target.checked)}
+              />
+              Download existing playlist videos
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={subNotify}
+                onChange={(e) => setSubNotify(e.target.checked)}
+              />
+              Get notifications for this subscription
+            </label>
           </div>
 
           {/* ── Format dropdowns ── */}

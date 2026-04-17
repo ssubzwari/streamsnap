@@ -26,6 +26,17 @@ async def create_subscription(
     from app.ws import emit_download_added
     from app.schemas import DownloadInfo
 
+    # Reject duplicates up front — one row per URL keeps the scheduler
+    # from polling the same playlist twice and the UI from listing ghosts.
+    existing = await session.execute(
+        select(Subscription).where(Subscription.url == req.url)
+    )
+    if existing.scalars().first() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="You're already subscribed to this playlist.",
+        )
+
     # Extract flat playlist (blocking — run in thread)
     try:
         playlist_data = await asyncio.to_thread(extract_playlist, req.url)
