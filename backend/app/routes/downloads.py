@@ -123,10 +123,11 @@ async def open_download(
     download = await session.get(Download, download_id)
     if not download:
         raise HTTPException(status_code=404, detail="Download not found")
-    if not download.output_path or not os.path.exists(download.output_path):
+
+    filepath = _resolve_output_path(download.output_path)
+    if not filepath:
         raise HTTPException(status_code=404, detail="File not found on disk")
 
-    filepath = os.path.abspath(download.output_path)
     folder = os.path.dirname(filepath)
 
     try:
@@ -149,6 +150,52 @@ async def open_download(
     return Response(status_code=204)
 
 
+def _resolve_output_path(stored: str | None) -> str | None:
+    """Return an existing on-disk path for a download, tolerating post-merge
+    path rewrites.
+
+    yt-dlp's progress hook reports the pre-merge fragment filename
+    (e.g. ``Title.f251.webm``) rather than the final merged file
+    (``Title.mp4``). We normalize both the stored name and each candidate
+    by stripping ``.f<digits>`` format-code suffixes before comparing.
+    """
+    import os
+    import re
+
+    if not stored:
+        return None
+    if os.path.exists(stored):
+        return os.path.abspath(stored)
+
+    fcode_re = re.compile(r"\.f\d+$")
+
+    def _normalize(name: str) -> str:
+        stem = os.path.splitext(name)[0]
+        # strip a trailing .f<digits> once, if present
+        return fcode_re.sub("", stem)
+
+    folder = os.path.dirname(stored) or "."
+    target = _normalize(os.path.basename(stored))
+    if not os.path.isdir(folder):
+        return None
+
+    # Prefer common merged containers first, then anything else with a match.
+    candidates: list[str] = []
+    for name in os.listdir(folder):
+        if _normalize(name) == target:
+            candidates.append(name)
+
+    def _rank(name: str) -> int:
+        ext = os.path.splitext(name)[1].lower()
+        return {".mp4": 0, ".mkv": 1, ".webm": 2, ".m4a": 3, ".mp3": 4}.get(ext, 9)
+
+    for name in sorted(candidates, key=_rank):
+        candidate = os.path.join(folder, name)
+        if os.path.isfile(candidate):
+            return os.path.abspath(candidate)
+    return None
+
+
 @router.get("/{download_id}/stream")
 async def stream_download(
     download_id: int,
@@ -159,25 +206,25 @@ async def stream_download(
     Starlette's FileResponse handles HTTP Range natively → the browser's
     native <video> element gets seek support for free.
     """
-    import os
-
     download = await session.get(Download, download_id)
     if not download:
         raise HTTPException(status_code=404, detail="Download not found")
-    if not download.output_path or not os.path.exists(download.output_path):
+
+    filepath = _resolve_output_path(download.output_path)
+    if not filepath:
         raise HTTPException(status_code=404, detail="File not found on disk")
 
-    filepath = os.path.abspath(download.output_path)
-    filename = os.path.basename(filepath)
     media_type, _ = mimetypes.guess_type(filepath)
     if media_type is None:
         media_type = "application/octet-stream"
 
+    # content_disposition_type="inline" tells the browser to render the file
+    # in-page instead of triggering a download. Without this, FileResponse
+    # defaults to "attachment" whenever a filename is supplied.
     return FileResponse(
         filepath,
         media_type=media_type,
-        filename=filename,
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        content_disposition_type="inline",
     )
 
 
