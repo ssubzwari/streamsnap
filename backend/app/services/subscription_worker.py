@@ -50,18 +50,20 @@ async def check_subscription(subscription_id: int) -> None:
         format_spec = sub.format_spec or "bestvideo*+bestaudio/best"
         sub_title = sub.title or url
         download_dir = sub.download_dir
+        notify_enabled = sub.notify
 
     # Extract flat playlist in a thread (blocking I/O)
     try:
         playlist_data = await asyncio.to_thread(extract_playlist, url)
     except Exception as exc:
         logger.error("Subscription %s check failed: %s", subscription_id, exc)
-        await create_notification(
-            kind="subscription_error",
-            title=f"Subscription check failed: {sub_title}",
-            body=str(exc),
-            payload={"subscription_id": subscription_id},
-        )
+        if notify_enabled:
+            await create_notification(
+                kind="subscription_error",
+                title=f"Subscription check failed: {sub_title}",
+                body=str(exc),
+                payload={"subscription_id": subscription_id},
+            )
         return
 
     entries = playlist_data["entries"]
@@ -131,7 +133,7 @@ async def check_subscription(subscription_id: int) -> None:
         "last_checked_at": now_iso,
     })
 
-    if new_count > 0:
+    if new_count > 0 and notify_enabled:
         await create_notification(
             kind="new_video",
             title=f"{new_count} new video{'s' if new_count != 1 else ''} from {sub_title}",

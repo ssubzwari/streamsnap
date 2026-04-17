@@ -45,6 +45,9 @@ class Subscription(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     download_existing: Mapped[bool] = mapped_column(Boolean, default=False)
     download_dir: Mapped[str | None] = mapped_column(String, nullable=True)
+    # When False, new_video / subscription_error notifications for this sub
+    # are suppressed (downloads still happen, they just don't alert).
+    notify: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

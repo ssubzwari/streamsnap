@@ -80,6 +80,7 @@ class SubscriptionCreate(BaseModel):
     format_spec: str = "bestvideo*+bestaudio/best"
     output_template: str | None = None
     download_existing: bool = False
+    notify: bool = True
 
 
 class SubscriptionUpdate(BaseModel):
@@ -87,6 +88,7 @@ class SubscriptionUpdate(BaseModel):
     format_spec: str | None = None
     output_template: str | None = None
     is_active: bool | None = None
+    notify: bool | None = None
 
 
 class SubscriptionInfo(BaseModel):
@@ -102,6 +104,7 @@ class SubscriptionInfo(BaseModel):
     is_active: bool
     download_existing: bool
     download_dir: str | None = None
+    notify: bool = True
     created_at: datetime
 
 

@@ -36,6 +36,20 @@ const TrashIcon = () => (
   </svg>
 );
 
+const PlayIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round">
+    <polygon points="6 4 20 12 6 20 6 4" />
+  </svg>
+);
+
+const BellIcon = ({ muted = false }: { muted?: boolean }) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    {muted && <line x1="1" y1="1" x2="23" y2="23" />}
+  </svg>
+);
+
 const FolderOpenIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
@@ -221,6 +235,7 @@ export default function Dashboard() {
   const [subUrl, setSubUrl] = useState("");
   const [subInterval, setSubInterval] = useState("60");
   const [subDownloadExisting, setSubDownloadExisting] = useState(false);
+  const [subNotify, setSubNotify] = useState(true);
   const [subFormat, setSubFormat] = useState("best");
   const [subSubmitting, setSubSubmitting] = useState(false);
   const [subError, setSubError] = useState<string | null>(null);
@@ -539,6 +554,7 @@ export default function Dashboard() {
         check_interval_minutes: parseInt(subInterval) || 60,
         format_spec: subFormat,
         download_existing: subDownloadExisting,
+        notify: subNotify,
       });
       dispatchSubs({ type: "ADD", sub });
       setSubUrl("");
@@ -559,6 +575,17 @@ export default function Dashboard() {
     try {
       const updated = await updateSubscription(sub.id, {
         is_active: !sub.is_active,
+      });
+      dispatchSubs({ type: "UPDATE", patch: updated });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleSubNotify = async (sub: SubscriptionInfo) => {
+    try {
+      const updated = await updateSubscription(sub.id, {
+        notify: !sub.notify,
       });
       dispatchSubs({ type: "UPDATE", patch: updated });
     } catch (err) {
@@ -1107,13 +1134,24 @@ export default function Dashboard() {
                     <td>
                       <div className={styles.rowActions}>
                         {d.status === "completed" && d.output_path && (
-                          <button
-                            className={styles.iconBtn}
-                            onClick={() => openDownload(d.id).catch(console.error)}
-                            title="Open file in Explorer"
-                          >
-                            <FolderOpenIcon />
-                          </button>
+                          <>
+                            <button
+                              className={styles.iconBtn}
+                              onClick={() =>
+                                window.open(`/api/downloads/${d.id}/stream`, "_blank")
+                              }
+                              title="Play in new tab"
+                            >
+                              <PlayIcon />
+                            </button>
+                            <button
+                              className={styles.iconBtn}
+                              onClick={() => openDownload(d.id).catch(console.error)}
+                              title="Open file in Explorer"
+                            >
+                              <FolderOpenIcon />
+                            </button>
+                          </>
                         )}
                         <button
                           className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
@@ -1192,6 +1230,14 @@ export default function Dashboard() {
                     onChange={(e) => setSubDownloadExisting(e.target.checked)}
                   />
                   Download videos already in the playlist
+                </label>
+                <label className={styles.advancedCheckbox}>
+                  <input
+                    type="checkbox"
+                    checked={subNotify}
+                    onChange={(e) => setSubNotify(e.target.checked)}
+                  />
+                  Get notifications for this subscription
                 </label>
                 <button
                   className={styles.downloadBtn}
@@ -1302,6 +1348,14 @@ export default function Dashboard() {
                           title={checkingSubId === s.id ? "Checking…" : "Check now"}
                         >
                           <RefreshIcon />
+                        </button>
+                        <button
+                          className={styles.iconBtn}
+                          onClick={() => handleToggleSubNotify(s)}
+                          title={s.notify ? "Notifications on — click to mute" : "Notifications muted — click to enable"}
+                          style={{ opacity: s.notify ? 1 : 0.5 }}
+                        >
+                          <BellIcon muted={!s.notify} />
                         </button>
                         <button
                           className={`${styles.iconBtn} ${styles.iconBtnDanger}`}

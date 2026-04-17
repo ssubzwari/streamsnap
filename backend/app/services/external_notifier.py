@@ -101,27 +101,59 @@ async def _send_pushover(cfg: dict, title: str, body: str | None) -> None:
 
 
 def _send_smtp_sync(cfg: dict, title: str, body: str | None) -> None:
-    msg = MIMEText(body or title)
+    # Sender — must be a valid address. Fall back to username (usually an email)
+    # rather than a synthetic @localhost that most relays reject.
+    sender = cfg.get("from_email") or cfg.get("username")
+    if not sender:
+        raise RuntimeError("SMTP: neither from_email nor username is set")
+    to_addr = cfg.get("to_email")
+    if not to_addr:
+        raise RuntimeError("SMTP: to_email is required")
+
+    msg = MIMEText(body or title, _charset="utf-8")
     msg["Subject"] = title
-    msg["From"]    = cfg.get("from_email", cfg.get("username", "metubeplus@localhost"))
-    msg["To"]      = cfg["to_email"]
+    msg["From"]    = sender
+    msg["To"]      = to_addr
 
     host = cfg.get("host", "localhost")
     port = int(cfg.get("port", 587))
-    use_tls = str(cfg.get("use_tls", "true")).lower() == "true"
+    # Three modes:
+    #   "ssl"       → port 465 implicit TLS (SMTP_SSL)
+    #   "starttls"  → port 587 explicit upgrade (STARTTLS)
+    #   "none"      → plain, no encryption (dev/LAN only)
+    # Accept legacy `use_tls` boolean for backward compat:
+    #   use_tls=true  → starttls
+    #   use_tls=false → none
+    mode = str(cfg.get("security") or cfg.get("mode") or "").lower()
+    if not mode:
+        if "use_tls" in cfg:
+            mode = "starttls" if str(cfg["use_tls"]).lower() == "true" else "none"
+        else:
+            # Auto-detect from port: 465 = implicit SSL, everything else = STARTTLS
+            mode = "ssl" if port == 465 else "starttls"
+
+    username = cfg.get("username")
+    password = cfg.get("password", "")
 
     ctx = ssl.create_default_context()
-    if use_tls:
-        with smtplib.SMTP(host, port) as server:
+    if mode == "ssl":
+        with smtplib.SMTP_SSL(host, port, context=ctx, timeout=30) as server:
+            if username:
+                server.login(username, password)
+            server.send_message(msg, from_addr=sender, to_addrs=[to_addr])
+    elif mode == "starttls":
+        with smtplib.SMTP(host, port, timeout=30) as server:
+            server.ehlo()
             server.starttls(context=ctx)
-            if cfg.get("username"):
-                server.login(cfg["username"], cfg.get("password", ""))
-            server.send_message(msg)
-    else:
-        with smtplib.SMTP(host, port) as server:
-            if cfg.get("username"):
-                server.login(cfg["username"], cfg.get("password", ""))
-            server.send_message(msg)
+            server.ehlo()
+            if username:
+                server.login(username, password)
+            server.send_message(msg, from_addr=sender, to_addrs=[to_addr])
+    else:  # none
+        with smtplib.SMTP(host, port, timeout=30) as server:
+            if username:
+                server.login(username, password)
+            server.send_message(msg, from_addr=sender, to_addrs=[to_addr])
 
 
 async def _send_smtp(cfg: dict, title: str, body: str | None) -> None:

@@ -55,6 +55,8 @@ export interface SubscriptionInfo {
   output_template: string | null;
   is_active: boolean;
   download_existing: boolean;
+  download_dir?: string | null;
+  notify: boolean;
   created_at: string;
 }
 

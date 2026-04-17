@@ -51,6 +51,7 @@ async def create_subscription(
         is_active=True,
         download_existing=req.download_existing,
         download_dir=download_dir,
+        notify=req.notify,
     )
     session.add(sub)
     await session.commit()
@@ -127,6 +128,8 @@ async def update_subscription(
         sub.output_template = req.output_template
     if req.is_active is not None:
         sub.is_active = req.is_active
+    if req.notify is not None:
+        sub.notify = req.notify
 
     await session.commit()
     await session.refresh(sub)
