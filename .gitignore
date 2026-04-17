@@ -3,11 +3,18 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+
+# SQLite databases (local state — DB is re-created from models on first run)
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
 
 # Node
 node_modules/
 dist/
+.vite/
+*.tsbuildinfo
 
 # IDE
 .vscode/
@@ -21,8 +28,15 @@ Thumbs.db
 *.log
 *.err
 
-# Downloads
+# Downloads — user's video files, never committed
 downloads/
+downloads/**
+!downloads/.gitkeep
+
+# Environment / secrets (SMTP creds, API tokens, etc.)
+.env
+.env.*
+!.env.example
 
 # Claude Code local settings
 .claude/settings.local.json
