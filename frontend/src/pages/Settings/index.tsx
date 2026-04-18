@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
-import { getSettings, getYtdlpVersion, updateSettings, updateYtdlp, type YtdlpVersionInfo } from "@/api/settings";
+import {
+  backupDb,
+  getSettings,
+  getYtdlpVersion,
+  initializeDb,
+  listDbBackups,
+  restoreDb,
+  updateSettings,
+  updateYtdlp,
+  type DbBackupEntry,
+  type YtdlpVersionInfo,
+} from "@/api/settings";
 import {
   type ChannelKind,
   type NotificationChannel,
@@ -260,6 +271,70 @@ export default function Settings({ onClose }: Props) {
       setYtdlpError(e instanceof Error ? e.message : "Update failed");
     } finally {
       setYtdlpUpdating(false);
+    }
+  };
+
+  // ── Database admin ────────────────────────────────────────────────────────
+  const [dbBackups, setDbBackups] = useState<DbBackupEntry[]>([]);
+  const [dbBackupDir, setDbBackupDir] = useState<string>("");
+  const [dbBusy, setDbBusy] = useState<string | null>(null);
+  const [dbStatus, setDbStatus] = useState<string | null>(null);
+
+  const refreshDbBackups = async () => {
+    try {
+      const list = await listDbBackups();
+      setDbBackups(list.backups);
+      setDbBackupDir(list.directory);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => { refreshDbBackups(); }, []);
+
+  const handleBackupDb = async () => {
+    setDbBusy("backup");
+    setDbStatus(null);
+    try {
+      const res = await backupDb();
+      setDbStatus(`✓ Saved ${res.name} (${(res.size / 1024).toFixed(1)} KB)`);
+      await refreshDbBackups();
+    } catch (e) {
+      setDbStatus(`✕ ${e instanceof Error ? e.message : "Backup failed"}`);
+    } finally {
+      setDbBusy(null);
+    }
+  };
+
+  const handleRestoreDb = async (name: string) => {
+    if (!confirm(`Restore database from ${name}? Current data will be overwritten.`)) return;
+    setDbBusy("restore");
+    setDbStatus(null);
+    try {
+      await restoreDb(name);
+      setDbStatus(`✓ Restored from ${name}. Reload the page to see the restored data.`);
+    } catch (e) {
+      setDbStatus(`✕ ${e instanceof Error ? e.message : "Restore failed"}`);
+    } finally {
+      setDbBusy(null);
+    }
+  };
+
+  const handleInitializeDb = async () => {
+    if (!confirm(
+      "Initialize database? This deletes all downloads, subscriptions, seen videos, and notifications. " +
+      "Notification channels and app settings are preserved. This cannot be undone."
+    )) return;
+    setDbBusy("init");
+    setDbStatus(null);
+    try {
+      const res = await initializeDb();
+      const parts = Object.entries(res.deleted).map(([k, v]) => `${v} ${k}`).join(", ");
+      setDbStatus(`✓ Cleared: ${parts}. Reload to refresh the UI.`);
+    } catch (e) {
+      setDbStatus(`✕ ${e instanceof Error ? e.message : "Initialize failed"}`);
+    } finally {
+      setDbBusy(null);
     }
   };
 
@@ -568,6 +643,71 @@ export default function Settings({ onClose }: Props) {
                   <p className={styles.ytdlpStatus} data-updated="false">
                     ✕ {ytdlpError}
                   </p>
+                )}
+
+                <SectionTitle>Database</SectionTitle>
+                <div className={styles.ytdlpCard}>
+                  <div className={styles.ytdlpMeta}>
+                    <span className={styles.ytdlpLabel}>Backups directory</span>
+                    <span className={styles.ytdlpDir} title={dbBackupDir}>
+                      📁 {dbBackupDir || "(not loaded)"}
+                    </span>
+                    <span className={styles.ytdlpLabel} style={{ marginTop: 4 }}>
+                      {dbBackups.length === 0 ? "No backups yet" : `${dbBackups.length} backup${dbBackups.length === 1 ? "" : "s"}`}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      className={styles.saveBtn}
+                      onClick={handleBackupDb}
+                      disabled={dbBusy !== null}
+                      style={{ whiteSpace: "nowrap" }}
+                    >
+                      {dbBusy === "backup" ? "Backing up…" : "Backup now"}
+                    </button>
+                    <button
+                      className={styles.saveBtn}
+                      onClick={handleInitializeDb}
+                      disabled={dbBusy !== null}
+                      style={{ whiteSpace: "nowrap", background: "var(--color-error)" }}
+                      title="Delete all downloads, subscriptions, seen videos, notifications. Keeps channels + settings."
+                    >
+                      {dbBusy === "init" ? "Initializing…" : "Initialize DB"}
+                    </button>
+                  </div>
+                </div>
+                {dbStatus && (
+                  <p className={styles.ytdlpStatus} data-updated={!dbStatus.startsWith("✕")}>
+                    {dbStatus}
+                  </p>
+                )}
+                {dbBackups.length > 0 && (
+                  <div style={{
+                    display: "flex", flexDirection: "column", gap: 6,
+                    marginTop: 8, fontSize: "var(--text-xs)",
+                  }}>
+                    {dbBackups.slice(0, 10).map((b) => (
+                      <div key={b.name} style={{
+                        display: "flex", justifyContent: "space-between",
+                        alignItems: "center", gap: 8,
+                        padding: "6px 10px",
+                        background: "var(--color-surface-hi)",
+                        borderRadius: "var(--radius-sm)",
+                      }}>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {b.name} · {(b.size / 1024).toFixed(1)} KB · {new Date(b.created_at).toLocaleString()}
+                        </span>
+                        <button
+                          className={styles.saveBtn}
+                          onClick={() => handleRestoreDb(b.name)}
+                          disabled={dbBusy !== null}
+                          style={{ padding: "4px 10px", fontSize: "var(--text-xs)" }}
+                        >
+                          Restore
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
 
                 <SectionTitle>Raw Options</SectionTitle>

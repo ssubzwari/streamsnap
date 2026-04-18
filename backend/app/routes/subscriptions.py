@@ -172,11 +172,21 @@ async def delete_subscription(
     sub_id: int,
     session: AsyncSession = Depends(get_session),
 ) -> None:
+    from sqlalchemy import delete as sa_delete
+    from app.models import Download
+
     sub = await session.get(Subscription, sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
     await unschedule_subscription(sub_id)
+
+    # Cascade manually — SQLite reuses primary keys after DELETE, so leaving
+    # orphan seen_videos / downloads rows behind would make a future
+    # subscription with the same reused id collide on
+    # seen_videos(subscription_id, video_id) UNIQUE.
+    await session.execute(sa_delete(SeenVideo).where(SeenVideo.subscription_id == sub_id))
+    await session.execute(sa_delete(Download).where(Download.subscription_id == sub_id))
     await session.delete(sub)
     await session.commit()
 
