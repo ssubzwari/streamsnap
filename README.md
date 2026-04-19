@@ -23,6 +23,7 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 - **Per-playlist folders** — each subscription and playlist download gets its own named subfolder
 - **Backfill control** — choose whether to download existing videos or only future ones on subscribe
 - **Per-subscription mute** — bell-icon toggle on each row (and at create time) silences alerts for that subscription while downloads still run
+- **Duplicate protection** — subscribing to a URL you're already subscribed to is rejected up front (no ghost rows); deleting a subscription cascades to its seen-videos and downloads so you can always cleanly re-subscribe
 
 ### Notifications
 - **In-app toasts** — slide-in notifications for completed, failed, and new-video events
@@ -46,6 +47,7 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 - **Auth** — cookies-from-browser, username/password (server-side only)
 - **Advanced** — raw `YoutubeDL` options JSON escape hatch
 - **yt-dlp updater** — one-click upgrade of the bundled yt-dlp to the latest release (works locally and inside Docker via a dedicated `/ytdlp` volume so the update survives container restarts)
+- **Database admin** — one-click **Backup** (hot SQLite `.backup()` — safe while downloads are running), **Restore** from any prior backup, and **Initialize DB** to wipe downloads / subscriptions / seen videos / notifications while preserving your notification channels and app settings. Backups are written to `/ytdlp/db-backups` in Docker (persistent) or `./backups` locally.
 
 ### Deployment
 - **Docker** — single-container image with bundled frontend; multi-arch (`amd64` + `arm64`)
