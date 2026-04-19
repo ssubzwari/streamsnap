@@ -80,3 +80,7 @@ export async function restoreDb(name: string): Promise<{ restored_from: string; 
 export async function initializeDb(): Promise<DbInitializeResult> {
   return apiFetch<DbInitializeResult>("/settings/db/initialize", { method: "POST" });
 }
+
+export async function deleteDbBackup(name: string): Promise<void> {
+  await apiFetch<void>(`/settings/db/backups/${encodeURIComponent(name)}`, { method: "DELETE" });
+}

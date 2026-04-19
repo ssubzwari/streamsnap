@@ -13,8 +13,9 @@ from app.db import get_session
 from app.models import Download
 from app.schemas import DownloadCreateRequest, DownloadInfo
 from app.services.download_manager import download_manager
-from app.utils import safe_folder_name
-from app.ws import emit_download_added
+from app.services.notifications import create_notification
+from app.utils import find_existing_file, safe_folder_name
+from app.ws import emit_download_added, emit_download_completed
 
 router = APIRouter(prefix="/api/downloads", tags=["downloads"])
 
@@ -24,14 +25,21 @@ async def create_download(
     req: DownloadCreateRequest,
     session: AsyncSession = Depends(get_session),
 ) -> DownloadInfo:
+    # Probe the download folder *before* enqueuing. If a file with the same
+    # title is already on disk (from a previous run, a manual copy, or a DB
+    # wipe that left the files behind), record a completed row pointing at
+    # the existing file instead of re-downloading.
+    existing_path = find_existing_file(settings.DOWNLOAD_DIR, req.title)
+
     download = Download(
         url=req.url,
         title=req.title,
         thumbnail=req.thumbnail,
         duration=req.duration,
         format_spec=req.format_spec,
-        status="queued",
-        percent=0.0,
+        status="completed" if existing_path else "queued",
+        percent=100.0 if existing_path else 0.0,
+        output_path=existing_path,
     )
     session.add(download)
     await session.commit()
@@ -39,6 +47,18 @@ async def create_download(
 
     info = DownloadInfo.model_validate(download)
     await emit_download_added(info.model_dump(mode="json"))
+
+    if existing_path:
+        payload = info.model_dump(mode="json")
+        await emit_download_completed(payload)
+        await create_notification(
+            kind="completed",
+            title="File already exists — skipping download",
+            body=f"{req.title or req.url}\n{existing_path}",
+            payload={"download_id": download.id, "path": existing_path, "skipped": True},
+        )
+        return info
+
     await download_manager.enqueue(download.id, req.url, req.format_spec)
     return info
 
@@ -79,23 +99,48 @@ async def download_playlist(
     pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
 
     results: list[DownloadInfo] = []
+    skipped_titles: list[str] = []
     for entry in playlist_data["entries"]:
+        title = entry.get("title")
+        # Scan the *playlist folder* specifically, so the same video name
+        # existing at the top level of DOWNLOAD_DIR doesn't mask a genuine
+        # miss inside this playlist.
+        existing_path = find_existing_file(download_dir, title)
+
         dl = Download(
             url=entry["url"],
-            title=entry.get("title"),
+            title=title,
             format_spec=req.format_spec,
-            status="queued",
-            percent=0.0,
+            status="completed" if existing_path else "queued",
+            percent=100.0 if existing_path else 0.0,
+            output_path=existing_path,
         )
         session.add(dl)
         await session.flush()
 
         info = DownloadInfo.model_validate(dl)
         await emit_download_added(info.model_dump(mode="json"))
-        await download_manager.enqueue(dl.id, entry["url"], req.format_spec, download_dir)
+
+        if existing_path:
+            await emit_download_completed(info.model_dump(mode="json"))
+            skipped_titles.append(title or entry["url"])
+        else:
+            await download_manager.enqueue(dl.id, entry["url"], req.format_spec, download_dir)
         results.append(info)
 
     await session.commit()
+
+    if skipped_titles:
+        preview = ", ".join(skipped_titles[:3])
+        if len(skipped_titles) > 3:
+            preview += f" (+{len(skipped_titles) - 3} more)"
+        await create_notification(
+            kind="completed",
+            title=f"{len(skipped_titles)} file(s) already exist — skipped",
+            body=preview,
+            payload={"skipped": True, "count": len(skipped_titles)},
+        )
+
     return results
 
 

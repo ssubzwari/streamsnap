@@ -325,6 +325,20 @@ async def restore_db(req: RestoreRequest) -> dict:
     return {"restored_from": req.name, "path": str(dst)}
 
 
+@router.delete("/db/backups/{name}", status_code=204)
+async def delete_db_backup(name: str) -> None:
+    """Delete a single backup file by name."""
+    if not _SAFE_NAME.match(name) or not name.endswith(".db"):
+        raise HTTPException(status_code=400, detail="Invalid backup name")
+    path = _backup_dir() / name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Backup not found: {name}")
+    try:
+        path.unlink()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to delete backup: {exc}")
+
+
 @router.post("/db/initialize")
 async def initialize_db(session: AsyncSession = Depends(get_session)) -> dict:
     """
@@ -334,7 +348,22 @@ async def initialize_db(session: AsyncSession = Depends(get_session)) -> dict:
     Useful when a user wants a clean slate but doesn't want to re-enter
     their SMTP / Slack / etc. credentials.
     """
+    from app.services.subscription_worker import get_scheduler, unschedule_subscription
+
     counts: dict[str, int] = {}
+
+    # Unschedule every APScheduler job for existing subscriptions BEFORE we
+    # delete their rows. Otherwise the jobs keep firing against a now-empty
+    # DB, and (more importantly) the scheduler's in-memory state would keep
+    # showing "active" subs until the next process restart — which is how
+    # users see ghost subscriptions after an Initialize.
+    existing_subs = (await session.execute(select(Subscription.id))).scalars().all()
+    for sid in existing_subs:
+        try:
+            await unschedule_subscription(sid)
+        except Exception:
+            # Missing job is fine — we're trying to cancel it anyway.
+            pass
 
     # Order matters — delete children before parents so FK constraints
     # (even the informational ones SQLite doesn't enforce by default)

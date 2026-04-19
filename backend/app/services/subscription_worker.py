@@ -15,7 +15,8 @@ from sqlalchemy import select
 from app.db import get_sessionmaker
 from app.models import Download, SeenVideo, Subscription
 from app.services.notifications import create_notification
-from app.ws import emit_subscription_checked, emit_subscription_new_video
+from app.utils import find_existing_file
+from app.ws import emit_download_completed, emit_subscription_checked, emit_subscription_new_video
 
 logger = logging.getLogger(__name__)
 
@@ -102,13 +103,19 @@ async def check_subscription(subscription_id: int) -> None:
             )
             session.add(seen)
 
-            # Create queued download
+            # Probe the subscription's folder before enqueuing. If the file
+            # is already there (user dropped it in manually, or a prior poll
+            # already fetched it under a different seen_videos entry), record
+            # it as completed and skip the re-download.
+            existing_path = find_existing_file(download_dir, video_title)
+
             dl = Download(
                 url=video_url,
                 title=video_title,
                 format_spec=format_spec,
-                status="queued",
-                percent=0.0,
+                status="completed" if existing_path else "queued",
+                percent=100.0 if existing_path else 0.0,
+                output_path=existing_path,
                 subscription_id=subscription_id,
             )
             session.add(dl)
@@ -121,10 +128,13 @@ async def check_subscription(subscription_id: int) -> None:
                 "title": video_title,
             })
 
-            # Emit download:added and enqueue
+            # Emit download:added; then either completed (skip) or enqueue.
             dl_info = DownloadInfo.model_validate(dl)
             await emit_download_added(dl_info.model_dump(mode="json"))
-            await download_manager.enqueue(dl.id, video_url, format_spec, download_dir)
+            if existing_path:
+                await emit_download_completed(dl_info.model_dump(mode="json"))
+            else:
+                await download_manager.enqueue(dl.id, video_url, format_spec, download_dir)
 
             new_count += 1
 

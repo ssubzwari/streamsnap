@@ -10,7 +10,7 @@ from app.db import get_session
 from app.models import SeenVideo, Subscription
 from app.schemas import SubscriptionCreate, SubscriptionInfo, SubscriptionUpdate
 from app.services.subscription_worker import schedule_subscription, unschedule_subscription
-from app.utils import safe_folder_name
+from app.utils import find_existing_file, safe_folder_name
 
 router = APIRouter(prefix="/api/subscriptions", tags=["subscriptions"])
 
@@ -95,20 +95,30 @@ async def create_subscription(
         session.add(seen)
 
     if req.download_existing:
+        from app.ws import emit_download_completed
         for entry in playlist_data["entries"]:
+            title = entry.get("title")
+            # Skip re-downloads when the file already sits in this
+            # subscription's folder (e.g. imported manually, or carried over
+            # from a previous subscription under the same name).
+            existing_path = find_existing_file(download_dir, title)
             dl = Download(
                 url=entry["url"],
-                title=entry.get("title"),
+                title=title,
                 format_spec=format_spec,
-                status="queued",
-                percent=0.0,
+                status="completed" if existing_path else "queued",
+                percent=100.0 if existing_path else 0.0,
+                output_path=existing_path,
                 subscription_id=sub.id,
             )
             session.add(dl)
             await session.flush()
             dl_info = DownloadInfo.model_validate(dl)
             await emit_download_added(dl_info.model_dump(mode="json"))
-            await download_manager.enqueue(dl.id, entry["url"], format_spec, download_dir)
+            if existing_path:
+                await emit_download_completed(dl_info.model_dump(mode="json"))
+            else:
+                await download_manager.enqueue(dl.id, entry["url"], format_spec, download_dir)
 
     await session.commit()
 

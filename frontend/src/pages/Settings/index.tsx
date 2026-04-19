@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   backupDb,
+  deleteDbBackup,
   getSettings,
   getYtdlpVersion,
   initializeDb,
@@ -312,10 +313,14 @@ export default function Settings({ onClose }: Props) {
     setDbStatus(null);
     try {
       await restoreDb(name);
-      setDbStatus(`✓ Restored from ${name}. Reload the page to see the restored data.`);
+      setDbStatus(`✓ Restored from ${name}. Reloading…`);
+      // The entire in-memory UI state (Dashboard downloads, subscriptions,
+      // notifications) is now out of sync with the restored DB — easier and
+      // less error-prone to refresh the whole page than to invalidate every
+      // store individually.
+      setTimeout(() => window.location.reload(), 600);
     } catch (e) {
       setDbStatus(`✕ ${e instanceof Error ? e.message : "Restore failed"}`);
-    } finally {
       setDbBusy(null);
     }
   };
@@ -330,9 +335,26 @@ export default function Settings({ onClose }: Props) {
     try {
       const res = await initializeDb();
       const parts = Object.entries(res.deleted).map(([k, v]) => `${v} ${k}`).join(", ");
-      setDbStatus(`✓ Cleared: ${parts}. Reload to refresh the UI.`);
+      setDbStatus(`✓ Cleared: ${parts}. Reloading…`);
+      // Same reasoning as restore — Dashboard still holds the wiped rows in
+      // local state and APScheduler jobs were just cancelled server-side.
+      setTimeout(() => window.location.reload(), 600);
     } catch (e) {
       setDbStatus(`✕ ${e instanceof Error ? e.message : "Initialize failed"}`);
+      setDbBusy(null);
+    }
+  };
+
+  const handleDeleteBackup = async (name: string) => {
+    if (!confirm(`Delete backup ${name}? This cannot be undone.`)) return;
+    setDbBusy("delete");
+    setDbStatus(null);
+    try {
+      await deleteDbBackup(name);
+      setDbStatus(`✓ Deleted ${name}`);
+      await refreshDbBackups();
+    } catch (e) {
+      setDbStatus(`✕ ${e instanceof Error ? e.message : "Delete failed"}`);
     } finally {
       setDbBusy(null);
     }
@@ -697,14 +719,29 @@ export default function Settings({ onClose }: Props) {
                         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {b.name} · {(b.size / 1024).toFixed(1)} KB · {new Date(b.created_at).toLocaleString()}
                         </span>
-                        <button
-                          className={styles.saveBtn}
-                          onClick={() => handleRestoreDb(b.name)}
-                          disabled={dbBusy !== null}
-                          style={{ padding: "4px 10px", fontSize: "var(--text-xs)" }}
-                        >
-                          Restore
-                        </button>
+                        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                          <button
+                            className={styles.saveBtn}
+                            onClick={() => handleRestoreDb(b.name)}
+                            disabled={dbBusy !== null}
+                            style={{ padding: "4px 10px", fontSize: "var(--text-xs)" }}
+                          >
+                            Restore
+                          </button>
+                          <button
+                            className={styles.saveBtn}
+                            onClick={() => handleDeleteBackup(b.name)}
+                            disabled={dbBusy !== null}
+                            style={{
+                              padding: "4px 10px",
+                              fontSize: "var(--text-xs)",
+                              background: "var(--color-error)",
+                            }}
+                            title="Delete this backup"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -728,7 +765,7 @@ export default function Settings({ onClose }: Props) {
             {activeTab === "Notifications" && (
               <div className={styles.fields}>
 
-                <SectionTitle>Event Suppression</SectionTitle>
+                <SectionTitle>Event Notifications</SectionTitle>
                 <Row>
                   <Toggle label="Download completed" checked={bool("notify_on_complete")} onChange={() => toggle("notify_on_complete")} />
                   <Toggle label="Download failed" checked={bool("notify_on_failed")} onChange={() => toggle("notify_on_failed")} />
