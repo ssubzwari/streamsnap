@@ -43,6 +43,6 @@ ENV DOWNLOAD_DIR=/downloads
 ENV DB_URL=sqlite+aiosqlite:////data/metubeplus.db
 ENV YTDLP_DIR=/ytdlp
 
-EXPOSE 8000
+EXPOSE 8088
 
-CMD ["uvicorn", "app.main:socket_app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:socket_app", "--host", "0.0.0.0", "--port", "8088"]

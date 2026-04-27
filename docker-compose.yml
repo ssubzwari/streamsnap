@@ -6,7 +6,7 @@ services:
     image: ghcr.io/ssubzwari/metubeplus:${IMAGE_TAG:-latest}
     # build: .
     ports:
-      - "${PORT:-8000}:8000"
+      - "${PORT:-8088}:8088"
     volumes:
       # Video downloads — bind-mount so files are directly accessible on the host
       - ${DOWNLOAD_DIR:-./downloads}:/downloads

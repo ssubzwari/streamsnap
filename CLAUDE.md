@@ -19,7 +19,7 @@ cd backend
 python -m venv .venv
 .venv/Scripts/activate          # Windows
 pip install -e .
-uvicorn app.main:app --reload   # dev server → http://localhost:8000
+uvicorn app.main:app --reload --port 8088   # dev server → http://localhost:8088
 ```
 
 ```bash
@@ -38,14 +38,14 @@ npm install
 npm run dev    # Vite dev server → http://localhost:5173
 ```
 
-The Vite dev server must proxy `/api` and `/socket.io` requests to `http://localhost:8000` — configure this in `vite.config.ts`.
+The Vite dev server must proxy `/api` and `/socket.io` requests to `http://localhost:8088` — configure this in `vite.config.ts`.
 
 ## Architecture
 
 ```
 React Frontend (Vite + TS)
    ↓ REST (fetch)   ↓ Socket.IO
-FastAPI Application (port 8000)
+FastAPI Application (port 8088)
 ├── Download Manager  (ProcessPoolExecutor — keeps yt-dlp off asyncio loop)
 ├── Subscription Worker  (APScheduler AsyncIOScheduler)
 ├── Notification Dispatcher

@@ -106,8 +106,8 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -e .
-uvicorn app.main:socket_app --reload
-# → http://localhost:8000
+uvicorn app.main:socket_app --reload --port 8088
+# → http://localhost:8088
 ```
 
 ### Frontend
@@ -165,7 +165,7 @@ MetubePlus/
 │   │   ├── api/                 # fetch wrappers (downloads, subscriptions, notifications…)
 │   │   ├── ws/                  # Socket.IO singleton + TypeScript event types
 │   │   └── styles/              # tokens.css, global.css, reset.css
-│   └── vite.config.ts           # Dev proxy → /api + /socket.io → :8000
+│   └── vite.config.ts           # Dev proxy → /api + /socket.io → :8088
 ├── Dockerfile                   # Multi-stage: node build → python:3.12-slim + ffmpeg
 └── docker-compose.yml           # Pulls ghcr.io image; bind-mounts downloads + data volume
 ```
@@ -177,7 +177,7 @@ MetubePlus/
 ```
 React Frontend (Vite + TypeScript + CSS Modules)
     ↓ REST (fetch)   ↓ Socket.IO
-FastAPI Application (port 8000)
+FastAPI Application (port 8088)
 ├── Download Manager    (ProcessPoolExecutor — yt-dlp off asyncio loop)
 ├── Subscription Worker (APScheduler AsyncIOScheduler)
 ├── External Notifier   (SMTP / Slack / Discord / Telegram / Pushover)
@@ -216,7 +216,7 @@ yt-dlp  (YoutubeDL class, not subprocess)
 | `DOWNLOAD_DIR` | `./downloads` | Root download folder |
 | `MAX_CONCURRENT_DOWNLOADS` | `3` | Parallel download workers |
 | `IMAGE_TAG` | `latest` | Docker image tag (compose only) |
-| `PORT` | `8000` | Host port to expose (compose only) |
+| `PORT` | `8088` | Host port to expose (compose only) |
 
 ### Notification channels
 

@@ -4,7 +4,7 @@ FastAPI application factory.
 IMPORTANT: uvicorn must target `socket_app`, not `app`, because python-socketio
 wraps the FastAPI ASGI app rather than being mounted on it.
 
-  uvicorn app.main:socket_app --reload
+  uvicorn app.main:socket_app --reload --port 8088
 """
 
 import pathlib

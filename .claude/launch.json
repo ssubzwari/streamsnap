@@ -6,7 +6,7 @@
       "runtimeExecutable": "D:\\Claude\\MetubePlus\\backend\\.venv\\Scripts\\uvicorn.exe",
       "runtimeArgs": ["app.main:socket_app", "--reload"],
       "cwd": "${workspaceFolder}/backend",
-      "port": 8000
+      "port": 8088
     },
     {
       "name": "Frontend (Vite)",
