@@ -65,13 +65,6 @@ const RefreshIcon = () => (
   </svg>
 );
 
-const GearIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-  </svg>
-);
-
 // ── Format spec builder ───────────────────────────────────────────────────────
 
 function buildFormatSpec(
@@ -202,13 +195,21 @@ function codecLabel(d: DownloadInfo): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function Dashboard() {
+interface DashboardProps {
+  settingsOpen: boolean;
+  onCloseSettings: () => void;
+  activeDownloadCount?: (count: number) => void;
+  totalSpeedReport?: (speed: number, unit: string) => void;
+}
+
+export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloadCount, totalSpeedReport }: DashboardProps) {
   // ── URL / format state ────────────────────────────────────────────────────
   const [url, setUrl] = useState("");
   const [type, setType] = useState("video");
   const [quality, setQuality] = useState("best");
   const [format, setFormat] = useState("auto");
   const [codec, setCodec] = useState("auto");
+  const [mediaCategory, setMediaCategory] = useState("none");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -241,8 +242,7 @@ export default function Dashboard() {
   const [subError, setSubError] = useState<string | null>(null);
   const [checkingSubId, setCheckingSubId] = useState<number | null>(null);
 
-  // ── Settings modal ────────────────────────────────────────────────────────
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // settingsOpen / onCloseSettings are owned by App.tsx (gear button lives in nav)
 
   // ── Loading state ─────────────────────────────────────────────────────────
   const [loadingDownloads, setLoadingDownloads] = useState(true);
@@ -389,6 +389,7 @@ export default function Dashboard() {
         title: meta.title,
         thumbnail: meta.thumbnail ?? undefined,
         duration: meta.duration ?? undefined,
+        media_category: mediaCategory !== "none" ? mediaCategory : undefined,
       });
       setUrl("");
     } catch (err) {
@@ -402,7 +403,7 @@ export default function Dashboard() {
       if (message === "PLAYLIST_URL") {
         try {
           const formatSpec = buildFormatSpec(type, quality, format, codec);
-          await downloadPlaylist(trimmed, formatSpec);
+          await downloadPlaylist(trimmed, formatSpec, mediaCategory !== "none" ? mediaCategory : undefined);
           setUrl("");
           return;
         } catch (playlistErr) {
@@ -622,31 +623,15 @@ export default function Dashboard() {
     }
   };
 
+  // ── Report stats to App nav ───────────────────────────────────────────────
+  useEffect(() => {
+    activeDownloadCount?.(activeDownloads.length);
+    totalSpeedReport?.(totalSpeed, speedUnit);
+  }, [activeDownloads.length, totalSpeed, speedUnit]);
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className={styles.app}>
-      {/* ── Header ── */}
-      <header className={styles.header}>
-        <span className={styles.brand}>MeTube<span className={styles.brandPlus}>Plus</span></span>
-        <div className={styles.headerStats}>
-          {activeDownloads.length > 0 && (
-            <>
-              <span className={styles.statBadge}>
-                {activeDownloads.length} downloading
-              </span>
-              {totalSpeed > 0 && (
-                <span className={styles.statSpeed}>
-                  {totalSpeed.toFixed(2)} {speedUnit}
-                </span>
-              )}
-            </>
-          )}
-        </div>
-        <button className={styles.settingsBtn} onClick={() => setSettingsOpen(true)} title="Settings">
-          <GearIcon />
-        </button>
-      </header>
-
       {/* ── Main content ── */}
       <main className={styles.main}>
         {/* ── URL input row ── */}
@@ -753,6 +738,19 @@ export default function Dashboard() {
                 {type === "video" && <option value="720">720p</option>}
                 {type === "video" && <option value="480">480p</option>}
                 {type === "video" && <option value="360">360p</option>}
+              </select>
+            </label>
+            <label className={styles.dropdownLabel}>
+              Category
+              <select
+                className={styles.dropdown}
+                value={mediaCategory}
+                onChange={(e) => setMediaCategory(e.target.value)}
+              >
+                <option value="none">None</option>
+                <option value="movies">Movie</option>
+                <option value="tv">TV Show</option>
+                <option value="music">Music</option>
               </select>
             </label>
           </div>
@@ -1409,7 +1407,7 @@ export default function Dashboard() {
       </main>
 
       {/* ── Settings modal ── */}
-      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <Settings onClose={onCloseSettings} />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ export interface CreateDownloadRequest {
   title?: string;
   thumbnail?: string;
   duration?: number;
+  media_category?: string;
 }
 
 export async function createDownload(
@@ -25,10 +26,11 @@ export async function listDownloads(): Promise<DownloadInfo[]> {
 export async function downloadPlaylist(
   url: string,
   format_spec: string,
+  media_category?: string,
 ): Promise<DownloadInfo[]> {
   return apiFetch<DownloadInfo[]>("/downloads/playlist", {
     method: "POST",
-    body: JSON.stringify({ url, format_spec }),
+    body: JSON.stringify({ url, format_spec, media_category }),
   });
 }
 

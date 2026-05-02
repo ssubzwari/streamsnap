@@ -37,6 +37,7 @@ class DownloadCreateRequest(BaseModel):
     title: str | None = None
     thumbnail: str | None = None
     duration: int | None = None
+    media_category: str | None = None
 
 
 class DownloadInfo(BaseModel):
@@ -60,6 +61,7 @@ class DownloadInfo(BaseModel):
     height: int | None = None
     vcodec: str | None = None
     acodec: str | None = None
+    media_category: str | None = None
     created_at: datetime
     updated_at: datetime
 

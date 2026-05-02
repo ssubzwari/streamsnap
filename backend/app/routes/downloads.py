@@ -40,6 +40,7 @@ async def create_download(
         status="completed" if existing_path else "queued",
         percent=100.0 if existing_path else 0.0,
         output_path=existing_path,
+        media_category=req.media_category,
     )
     session.add(download)
     await session.commit()
@@ -67,6 +68,7 @@ async def create_download(
 class PlaylistDownloadRequest(BaseModel):
     url: str
     format_spec: str = "bestvideo*+bestaudio/best"
+    media_category: str | None = None
 
 
 @router.post("/playlist", response_model=list[DownloadInfo], status_code=201)
@@ -115,6 +117,7 @@ async def download_playlist(
             status="completed" if existing_path else "queued",
             percent=100.0 if existing_path else 0.0,
             output_path=existing_path,
+            media_category=req.media_category,
         )
         session.add(dl)
         await session.flush()

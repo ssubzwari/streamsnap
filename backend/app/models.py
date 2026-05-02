@@ -28,6 +28,7 @@ class Download(Base):
     height: Mapped[int | None]
     vcodec: Mapped[str | None] = mapped_column(String)
     acodec: Mapped[str | None] = mapped_column(String)
+    media_category: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

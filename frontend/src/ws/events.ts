@@ -19,6 +19,7 @@ export interface DownloadInfo {
   output_path: string | null;
   error_message: string | null;
   subscription_id: number | null;
+  media_category: string | null;
   ext: string | null;
   filesize: number | null;
   height: number | null;
