@@ -55,6 +55,7 @@ async def create_download(
             kind="completed",
             title="File already exists — skipping download",
             body=f"{req.title or req.url}\n{existing_path}",
+            thumbnail=req.thumbnail,
             payload={"download_id": download.id, "path": existing_path, "skipped": True},
         )
         return info

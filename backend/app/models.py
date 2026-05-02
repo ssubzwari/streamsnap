@@ -71,6 +71,7 @@ class Notification(Base):
     kind: Mapped[str] = mapped_column(String)
     title: Mapped[str] = mapped_column(String)
     body: Mapped[str | None] = mapped_column(String)
+    thumbnail: Mapped[str | None] = mapped_column(String)
     payload_json: Mapped[str | None] = mapped_column(String)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

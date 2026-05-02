@@ -63,6 +63,9 @@ def make_progress_hook(
                 "filesize": info.get("filesize") or info.get("filesize_approx"),
                 "vcodec": info.get("vcodec"),
                 "acodec": info.get("acodec"),
+                "thumbnail": info.get("thumbnail"),
+                "title": info.get("title"),
+                "duration": info.get("duration"),
             })
 
     return hook

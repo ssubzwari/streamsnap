@@ -40,6 +40,12 @@ async def init_db() -> None:
                 text("ALTER TABLE subscriptions ADD COLUMN notify BOOLEAN DEFAULT 1")
             )
 
+        notif_cols = await conn.run_sync(lambda c: _existing_cols(c, "notifications"))
+        if "thumbnail" not in notif_cols:
+            await conn.execute(
+                text("ALTER TABLE notifications ADD COLUMN thumbnail VARCHAR")
+            )
+
 
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     """Returns the session factory for use outside of route dependencies."""

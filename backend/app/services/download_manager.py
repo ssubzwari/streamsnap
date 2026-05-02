@@ -104,6 +104,7 @@ class DownloadManager:
             self._cancel_events[job.download_id] = cancel_event
 
             await self._update_db(job.download_id, status="downloading")
+            await self._notify_started(job.download_id)
 
             app_settings = await self._load_app_settings()
 
@@ -162,17 +163,29 @@ class DownloadManager:
                 ))
 
             elif msg_type == "finished":
-                await self._update_db(
-                    did,
-                    status="completed",
-                    percent=100.0,
-                    output_path=msg.get("output_path"),
-                    ext=msg.get("ext"),
-                    height=msg.get("height"),
-                    filesize=msg.get("filesize"),
-                    vcodec=msg.get("vcodec"),
-                    acodec=msg.get("acodec"),
-                )
+                # Only set title/thumbnail/duration when the row didn't
+                # already have them — preserves frontend-provided values
+                # (e.g. one-off download where the user resolved metadata up
+                # front) over the post-merge yt-dlp values.
+                fin_kwargs: dict = {
+                    "status": "completed",
+                    "percent": 100.0,
+                    "output_path": msg.get("output_path"),
+                    "ext": msg.get("ext"),
+                    "height": msg.get("height"),
+                    "filesize": msg.get("filesize"),
+                    "vcodec": msg.get("vcodec"),
+                    "acodec": msg.get("acodec"),
+                }
+                existing = await self._get_download(did)
+                if existing is not None:
+                    if not existing.thumbnail and msg.get("thumbnail"):
+                        fin_kwargs["thumbnail"] = msg["thumbnail"]
+                    if not existing.title and msg.get("title"):
+                        fin_kwargs["title"] = msg["title"]
+                    if not existing.duration and msg.get("duration"):
+                        fin_kwargs["duration"] = msg["duration"]
+                await self._update_db(did, **fin_kwargs)
                 download = await self._get_download(did)
                 if download:
                     from app.schemas import DownloadInfo
@@ -227,53 +240,78 @@ class DownloadManager:
         async with SessionLocal() as session:
             return await session.get(Download, download_id)
 
+    async def _notify_started(self, download_id: int) -> None:
+        """Fire a download_started notification.
+
+        For subscription downloads we skip — the playlist summary covers it,
+        and emitting per-video starts would just resurrect the toast spam
+        that the kind-level gate is meant to prevent.
+        """
+        from app.services.notifications import create_notification
+
+        download = await self._get_download(download_id)
+        if download is None or download.subscription_id is not None:
+            return
+        title_txt = download.title or download.url
+        await create_notification(
+            kind="download_started",
+            title=f"Download started: {title_txt}",
+            body=None,
+            thumbnail=download.thumbnail,
+            payload={"download_id": download.id},
+        )
+
     async def _notify_completion(self, download, success: bool, error: str | None = None) -> None:
         """
         Create a Notification row for a completed/failed download.
-        This also triggers external channel dispatch + respects the per-
-        subscription `notify` flag (individual-file summary source).
 
-        When a download belongs to a subscription and no sibling download from
-        the same subscription is still queued/running, emit a playlist-summary
-        notification covering all recently-finished siblings.
+        For subscription-driven downloads we deliberately skip per-video
+        notifications (they spam when a long playlist polls in N new videos)
+        and emit a single `playlist_completed` summary once the whole batch
+        finishes. One-off (non-subscription) downloads still get an individual
+        `completed`/`failed` notification.
         """
         from sqlalchemy import and_, select
         from app.models import Download, Subscription
         from app.services.notifications import create_notification
 
         sub_id = download.subscription_id
+        sub_title: str | None = None
+        sub_notify_enabled = True
 
-        # Respect per-subscription mute
         if sub_id is not None:
             SessionLocal = get_sessionmaker()
             async with SessionLocal() as session:
                 sub = await session.get(Subscription, sub_id)
-                if sub is not None and not sub.notify:
-                    return
-                sub_title = sub.title if sub is not None else None
-        else:
-            sub_title = None
+                if sub is not None:
+                    sub_title = sub.title
+                    sub_notify_enabled = sub.notify
 
         title_txt = download.title or download.url
 
-        # 1. Individual-file notification
-        if success:
-            await create_notification(
-                kind="completed",
-                title=f"Download completed: {title_txt}",
-                body=download.output_path or None,
-                payload={"download_id": download.id, "subscription_id": sub_id},
-            )
-        else:
-            await create_notification(
-                kind="failed",
-                title=f"Download failed: {title_txt}",
-                body=error,
-                payload={"download_id": download.id, "subscription_id": sub_id},
-            )
+        # 1. Individual-file notification — only for one-off downloads.
+        # Subscription downloads always roll up into the playlist summary.
+        if sub_id is None:
+            if success:
+                await create_notification(
+                    kind="completed",
+                    title=f"Download completed: {title_txt}",
+                    body=download.output_path or None,
+                    thumbnail=download.thumbnail,
+                    payload={"download_id": download.id},
+                )
+            else:
+                await create_notification(
+                    kind="failed",
+                    title=f"Download failed: {title_txt}",
+                    body=error,
+                    thumbnail=download.thumbnail,
+                    payload={"download_id": download.id},
+                )
+            return
 
         # 2. Playlist summary — only when the whole batch finished
-        if sub_id is None:
+        if not sub_notify_enabled:
             return
 
         SessionLocal = get_sessionmaker()
@@ -306,17 +344,22 @@ class DownloadManager:
             return
 
         label = sub_title or f"subscription #{sub_id}"
-        summary_title = f"Playlist summary: {label} — {len(done)} done, {len(failed)} failed"
+        summary_title = f"Playlist complete: {label} — {len(done)} done, {len(failed)} failed"
         lines = []
         for d in done[:20]:
             lines.append(f"✓ {d.title or d.url}")
         for d in failed[:10]:
             lines.append(f"✕ {d.title or d.url}: {d.error_message or 'failed'}")
 
+        # Use the most recent successful sibling's thumbnail as the summary art.
+        summary_thumb = next((d.thumbnail for d in done if d.thumbnail), None) \
+            or next((d.thumbnail for d in siblings if d.thumbnail), None)
+
         await create_notification(
-            kind="completed",
+            kind="playlist_completed",
             title=summary_title,
             body="\n".join(lines) if lines else None,
+            thumbnail=summary_thumb,
             payload={"subscription_id": sub_id, "done": len(done), "failed": len(failed)},
         )
 

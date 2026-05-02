@@ -19,10 +19,15 @@ from app.db import get_sessionmaker
 
 logger = logging.getLogger(__name__)
 
-# Map notification kinds to their suppression setting key
+# Map notification kinds to their suppression setting key.
+# Note: create_notification() also gates on these before emitting; this is a
+# defense-in-depth check for callers that bypass the in-app Notification row
+# and dispatch directly (e.g. send_summary).
 _SUPPRESS_KEYS: dict[str, str] = {
+    "download_started":    "notify_on_download_start",
     "completed":           "notify_on_complete",
     "failed":              "notify_on_failed",
+    "playlist_completed":  "notify_on_playlist_complete",
     "new_video":           "notify_on_new_video",
     "subscription_error":  "notify_on_subscription_error",
 }
@@ -61,46 +66,69 @@ def _is_suppressed(kind: str, settings: dict[str, str]) -> bool:
 
 # ── Per-channel senders ───────────────────────────────────────────────────────
 
-async def _send_slack(cfg: dict, title: str, body: str | None) -> None:
+async def _send_slack(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
     text = f"*{title}*"
     if body:
         text += f"\n{body}"
+    payload: dict = {"text": text}
+    # Slack supports image_url on attachments — adds a thumbnail card next to the text.
+    if thumbnail:
+        payload["attachments"] = [{"image_url": thumbnail, "fallback": title}]
     async with httpx.AsyncClient(timeout=10) as client:
-        await client.post(cfg["webhook_url"], json={"text": text})
+        await client.post(cfg["webhook_url"], json=payload)
 
 
-async def _send_discord(cfg: dict, title: str, body: str | None) -> None:
+async def _send_discord(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
     content = f"**{title}**"
     if body:
         content += f"\n{body}"
+    payload: dict = {"content": content}
+    # Discord renders an image embed when given an `embeds[*].image.url`.
+    if thumbnail:
+        payload["embeds"] = [{"image": {"url": thumbnail}}]
     async with httpx.AsyncClient(timeout=10) as client:
-        await client.post(cfg["webhook_url"], json={"content": content})
+        await client.post(cfg["webhook_url"], json=payload)
 
 
-async def _send_telegram(cfg: dict, title: str, body: str | None) -> None:
-    text = f"<b>{title}</b>"
+async def _send_telegram(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
+    caption = f"<b>{title}</b>"
     if body:
-        text += f"\n{body}"
-    url = f"https://api.telegram.org/bot{cfg['bot_token']}/sendMessage"
+        caption += f"\n{body}"
+    base = f"https://api.telegram.org/bot{cfg['bot_token']}"
     async with httpx.AsyncClient(timeout=10) as client:
-        await client.post(url, json={
-            "chat_id": cfg["chat_id"],
-            "text": text,
-            "parse_mode": "HTML",
-        })
+        if thumbnail:
+            # sendPhoto caption has a 1024-char limit; truncate to be safe.
+            await client.post(f"{base}/sendPhoto", json={
+                "chat_id": cfg["chat_id"],
+                "photo": thumbnail,
+                "caption": caption[:1024],
+                "parse_mode": "HTML",
+            })
+        else:
+            await client.post(f"{base}/sendMessage", json={
+                "chat_id": cfg["chat_id"],
+                "text": caption,
+                "parse_mode": "HTML",
+            })
 
 
-async def _send_pushover(cfg: dict, title: str, body: str | None) -> None:
+async def _send_pushover(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
+    # Pushover supports an image attachment via multipart form upload, but
+    # the free tier needs the image bytes. To keep this simple and avoid an
+    # extra fetch, append the URL to the message instead.
+    message = body or title
+    if thumbnail:
+        message = f"{message}\n{thumbnail}" if message else thumbnail
     async with httpx.AsyncClient(timeout=10) as client:
         await client.post("https://api.pushover.net/1/messages.json", data={
             "token":   cfg["app_token"],
             "user":    cfg["user_key"],
             "title":   title,
-            "message": body or title,
+            "message": message,
         })
 
 
-def _send_smtp_sync(cfg: dict, title: str, body: str | None) -> None:
+def _send_smtp_sync(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
     # Sender — must be a valid address. Fall back to username (usually an email)
     # rather than a synthetic @localhost that most relays reject.
     sender = cfg.get("from_email") or cfg.get("username")
@@ -110,7 +138,21 @@ def _send_smtp_sync(cfg: dict, title: str, body: str | None) -> None:
     if not to_addr:
         raise RuntimeError("SMTP: to_email is required")
 
-    msg = MIMEText(body or title, _charset="utf-8")
+    # Plain-text fallback + (optional) HTML alternative with thumbnail
+    text_body = body or title
+    if thumbnail:
+        from email.mime.multipart import MIMEMultipart
+        html = (
+            f"<html><body><h3>{title}</h3>"
+            + (f"<p>{(body or '').replace(chr(10), '<br>')}</p>" if body else "")
+            + f'<img src="{thumbnail}" alt="" style="max-width:480px;border-radius:8px;">'
+            + "</body></html>"
+        )
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(text_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html, "html", "utf-8"))
+    else:
+        msg = MIMEText(text_body, _charset="utf-8")
     msg["Subject"] = title
     msg["From"]    = sender
     msg["To"]      = to_addr
@@ -156,8 +198,8 @@ def _send_smtp_sync(cfg: dict, title: str, body: str | None) -> None:
             server.send_message(msg, from_addr=sender, to_addrs=[to_addr])
 
 
-async def _send_smtp(cfg: dict, title: str, body: str | None) -> None:
-    await asyncio.to_thread(_send_smtp_sync, cfg, title, body)
+async def _send_smtp(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
+    await asyncio.to_thread(_send_smtp_sync, cfg, title, body, thumbnail)
 
 
 _SENDERS = {
@@ -171,7 +213,7 @@ _SENDERS = {
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-async def dispatch(kind: str, title: str, body: str | None) -> None:
+async def dispatch(kind: str, title: str, body: str | None, thumbnail: str | None = None) -> None:
     """Fire-and-forget dispatcher called from create_notification()."""
     try:
         settings, channels = await asyncio.gather(
@@ -189,7 +231,7 @@ async def dispatch(kind: str, title: str, body: str | None) -> None:
         if sender is None:
             continue
         try:
-            await sender(ch["config"], title, body)
+            await sender(ch["config"], title, body, thumbnail)
         except Exception as exc:
             logger.warning("Notification channel %s failed: %s", ch["kind"], exc)
 
@@ -213,4 +255,4 @@ async def send_summary() -> None:
 
     lines = [f"• {n.title}" + (f": {n.body}" if n.body else "") for n in notifs]
     body = "\n".join(lines)
-    await dispatch("summary", f"MetubePlus summary — {len(notifs)} notification(s)", body)
+    await dispatch("summary", f"MetubePlus summary — {len(notifs)} notification(s)", body, None)

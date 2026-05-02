@@ -72,8 +72,10 @@ interface SettingsState {
   // Advanced
   raw_options_json: string;
   // Notification suppression
+  notify_on_download_start: string;
   notify_on_complete: string;
   notify_on_failed: string;
+  notify_on_playlist_complete: string;
   notify_on_new_video: string;
   notify_on_subscription_error: string;
   // Summary
@@ -118,9 +120,11 @@ const DEFAULTS: SettingsState = {
   username: "",
   password: "",
   raw_options_json: "",
+  notify_on_download_start: "false",
   notify_on_complete: "true",
   notify_on_failed: "true",
-  notify_on_new_video: "true",
+  notify_on_playlist_complete: "true",
+  notify_on_new_video: "false",
   notify_on_subscription_error: "true",
   notify_summary_enabled: "false",
   notify_summary_interval_hours: "24",
@@ -774,14 +778,49 @@ export default function Settings({ onClose }: Props) {
             {activeTab === "Notifications" && (
               <div className={styles.fields}>
 
-                <SectionTitle>Event Notifications</SectionTitle>
+                <SectionTitle>Single downloads</SectionTitle>
                 <Row>
-                  <Toggle label="Download completed" checked={bool("notify_on_complete")} onChange={() => toggle("notify_on_complete")} />
-                  <Toggle label="Download failed" checked={bool("notify_on_failed")} onChange={() => toggle("notify_on_failed")} />
+                  <Toggle
+                    label="Download started"
+                    hint="One toast per download as it begins (off by default)"
+                    checked={bool("notify_on_download_start")}
+                    onChange={() => toggle("notify_on_download_start")}
+                  />
+                  <Toggle
+                    label="Download completed"
+                    checked={bool("notify_on_complete")}
+                    onChange={() => toggle("notify_on_complete")}
+                  />
+                  <Toggle
+                    label="Download failed"
+                    checked={bool("notify_on_failed")}
+                    onChange={() => toggle("notify_on_failed")}
+                  />
                 </Row>
+
+                <SectionTitle>Subscriptions &amp; playlists</SectionTitle>
+                <p className={styles.fieldHint} style={{ marginTop: 0 }}>
+                  Per-video notifications for subscription downloads are always rolled up into a single
+                  summary toast — these toggles control which summaries you see.
+                </p>
                 <Row>
-                  <Toggle label="New video from subscription" checked={bool("notify_on_new_video")} onChange={() => toggle("notify_on_new_video")} />
-                  <Toggle label="Subscription check error" checked={bool("notify_on_subscription_error")} onChange={() => toggle("notify_on_subscription_error")} />
+                  <Toggle
+                    label="Playlist download completed"
+                    hint="One summary toast when a subscription's batch finishes"
+                    checked={bool("notify_on_playlist_complete")}
+                    onChange={() => toggle("notify_on_playlist_complete")}
+                  />
+                  <Toggle
+                    label="New video detected"
+                    hint="Fires when a subscription poll finds new videos"
+                    checked={bool("notify_on_new_video")}
+                    onChange={() => toggle("notify_on_new_video")}
+                  />
+                  <Toggle
+                    label="Subscription check error"
+                    checked={bool("notify_on_subscription_error")}
+                    onChange={() => toggle("notify_on_subscription_error")}
+                  />
                 </Row>
 
                 <SectionTitle>Summary</SectionTitle>

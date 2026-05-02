@@ -117,6 +117,7 @@ class NotificationInfo(BaseModel):
     kind: str
     title: str
     body: str | None = None
+    thumbnail: str | None = None
     payload_json: str | None = None
     is_read: bool
     created_at: datetime

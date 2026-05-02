@@ -15,7 +15,7 @@ from sqlalchemy import select
 from app.db import get_sessionmaker
 from app.models import Download, SeenVideo, Subscription
 from app.services.notifications import create_notification
-from app.utils import find_existing_file
+from app.utils import find_existing_file, youtube_thumbnail_url
 from app.ws import emit_download_completed, emit_subscription_checked, emit_subscription_new_video
 
 logger = logging.getLogger(__name__)
@@ -112,6 +112,7 @@ async def check_subscription(subscription_id: int) -> None:
             dl = Download(
                 url=video_url,
                 title=video_title,
+                thumbnail=youtube_thumbnail_url(video_url, video_id),
                 format_spec=format_spec,
                 status="completed" if existing_path else "queued",
                 percent=100.0 if existing_path else 0.0,
@@ -153,10 +154,19 @@ async def check_subscription(subscription_id: int) -> None:
     })
 
     if new_count > 0 and notify_enabled:
+        first = new_entries[0] if new_entries else None
+        first_thumb = (
+            youtube_thumbnail_url(first.get("url"), first.get("id"))
+            if first else None
+        )
+        body_lines = [f"• {e.get('title') or e.get('id')}" for e in new_entries[:5]]
+        if new_count > 5:
+            body_lines.append(f"…and {new_count - 5} more")
         await create_notification(
             kind="new_video",
             title=f"{new_count} new video{'s' if new_count != 1 else ''} from {sub_title}",
-            body=None,
+            body="\n".join(body_lines) if body_lines else None,
+            thumbnail=first_thumb,
             payload={"subscription_id": subscription_id, "new_count": new_count},
         )
 

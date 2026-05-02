@@ -30,6 +30,28 @@ def _normalize_stem(name: str) -> str:
     return _NORMALIZE_RE.sub("", stem.lower())
 
 
+_YT_HOSTS = ("youtube.com", "youtu.be", "music.youtube.com", "m.youtube.com")
+_YT_ID_RE = re.compile(r"(?:v=|youtu\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})")
+
+
+def youtube_thumbnail_url(url: str | None, video_id: str | None = None) -> str | None:
+    """Best-effort thumbnail URL for a YouTube video.
+
+    Used to give subscription/playlist notifications an image up front,
+    before yt-dlp has run and populated the real thumbnail. Returns None
+    for non-YouTube URLs.
+    """
+    vid = video_id
+    if not vid and url:
+        if not any(h in url for h in _YT_HOSTS):
+            return None
+        m = _YT_ID_RE.search(url)
+        vid = m.group(1) if m else None
+    if not vid:
+        return None
+    return f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+
+
 def find_existing_file(folder: str, title: str | None) -> str | None:
     """Return the absolute path of an already-downloaded file for *title*
     inside *folder*, or None if no match.

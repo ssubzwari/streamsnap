@@ -107,8 +107,10 @@ ALLOWED_KEYS = {
     # Advanced
     "raw_options_json",
     # Notification suppression
+    "notify_on_download_start",
     "notify_on_complete",
     "notify_on_failed",
+    "notify_on_playlist_complete",
     "notify_on_new_video",
     "notify_on_subscription_error",
     # Notification summary
