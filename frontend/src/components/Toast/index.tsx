@@ -34,7 +34,7 @@ function fireBrowserNotification(title: string, body?: string, image?: string) {
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
   // `icon` shows on every platform; `image` is a hero image (Chrome/Android).
-  new Notification(title, { body, icon: image || "/favicon.ico", image });
+  new Notification(title, { body, icon: image || "/favicon.ico", image } as NotificationOptions & { image?: string });
 }
 
 export default function ToastContainer() {
