@@ -1,5 +1,6 @@
-:root {
-  /* Color palette */
+:root,
+:root[data-theme='dark'] {
+  /* Color palette — Dark (default) */
   --color-bg: #0a0a0b;
   --color-surface: #141416;
   --color-surface-hi: #1c1c1f;
@@ -10,6 +11,23 @@
   --color-success: #3fd97f;
   --color-warn: #ffb84c;
   --color-error: #ff5c5c;
+}
+
+:root[data-theme='light'] {
+  /* Color palette — Light */
+  --color-bg: #f5f5f9;
+  --color-surface: #ffffff;
+  --color-surface-hi: #eef0f6;
+  --color-border: #d8dae3;
+  --color-text: #111118;
+  --color-text-muted: #5b5f6a;
+  --color-accent: #5a3fff;
+  --color-success: #1e9d54;
+  --color-warn: #c47a00;
+  --color-error: #d6362f;
+}
+
+:root {
 
   /* Spacing — 4px grid */
   --space-1: 4px;

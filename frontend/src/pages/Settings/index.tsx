@@ -22,6 +22,8 @@ import {
   testChannel,
   updateChannel,
 } from "@/api/notifications";
+import { useTheme } from "@/theme/ThemeContext";
+import { BACKGROUND_OPTIONS } from "@/theme/types";
 import styles from "./Settings.module.css";
 
 interface SettingsState {
@@ -125,6 +127,7 @@ const DEFAULTS: SettingsState = {
 };
 
 const TABS = [
+  "Theme",
   "Format",
   "Subtitles",
   "Metadata",
@@ -216,11 +219,15 @@ export default function Settings({ onClose }: Props) {
     getYtdlpVersion().then(setYtdlpInfo).catch(console.error);
   }, []);
 
-  const set = (key: keyof SettingsState, value: string) =>
+  const set = (key: keyof SettingsState, value: string) => {
     setS((prev) => ({ ...prev, [key]: value }));
+    setSaved(false);
+  };
 
-  const toggle = (key: keyof SettingsState) =>
+  const toggle = (key: keyof SettingsState) => {
     setS((prev) => ({ ...prev, [key]: prev[key] === "true" ? "false" : "true" }));
+    setSaved(false);
+  };
 
   const handleAddChannel = async () => {
     if (!addingKind || !addingName.trim()) return;
@@ -372,7 +379,6 @@ export default function Settings({ onClose }: Props) {
     try {
       await updateSettings(s as unknown as Record<string, string>);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
     } finally {
       setSaving(false);
     }
@@ -404,6 +410,9 @@ export default function Settings({ onClose }: Props) {
 
           {/* Tab content */}
           <div className={styles.content}>
+
+            {/* ── Theme ── */}
+            {activeTab === "Theme" && <ThemeTab />}
 
             {/* ── Format ── */}
             {activeTab === "Format" && (
@@ -860,8 +869,12 @@ export default function Settings({ onClose }: Props) {
 
         <div className={styles.footer}>
           <button className={styles.cancelBtn} onClick={onClose}>Cancel</button>
-          <button className={styles.saveBtn} onClick={handleSave} disabled={saving}>
-            {saved ? "Saved!" : saving ? "Saving…" : "Save Settings"}
+          <button
+            className={styles.saveBtn}
+            onClick={saved ? onClose : handleSave}
+            disabled={saving}
+          >
+            {saved ? "Close" : saving ? "Saving…" : "Save Settings"}
           </button>
         </div>
       </div>
@@ -900,5 +913,55 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: stri
         {hint && <span className={styles.fieldHint}>{hint}</span>}
       </span>
     </label>
+  );
+}
+
+// ── Theme tab ────────────────────────────────────────────────────────────────
+
+function ThemeTab() {
+  const { mode, background, setMode, setBackground } = useTheme();
+  const groups: Array<"Off" | "Vanta" | "Custom"> = ["Off", "Vanta", "Custom"];
+
+  return (
+    <div className={styles.fields}>
+      <SectionTitle>Page mode</SectionTitle>
+      <div className={styles.themeModeRow}>
+        {(["dark", "light"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            className={`${styles.themeModeBtn} ${mode === m ? styles.themeModeBtnActive : ""}`}
+            onClick={() => setMode(m)}
+          >
+            <span className={styles.themeModeSwatch} data-mode={m} />
+            <span>{m === "dark" ? "Dark" : "Light"}</span>
+          </button>
+        ))}
+      </div>
+
+      <SectionTitle>Background animation</SectionTitle>
+      {groups.map((group) => {
+        const items = BACKGROUND_OPTIONS.filter((o) => o.group === group);
+        if (!items.length) return null;
+        return (
+          <div key={group} className={styles.bgGroup}>
+            <div className={styles.bgGroupLabel}>{group}</div>
+            <div className={styles.bgGrid}>
+              {items.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={`${styles.bgTile} ${background === opt.id ? styles.bgTileActive : ""}`}
+                  onClick={() => setBackground(opt.id)}
+                >
+                  <span className={styles.bgTilePreview} data-bg={opt.id} />
+                  <span className={styles.bgTileLabel}>{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
