@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 
 import Dashboard from "@/pages/Dashboard";
 import Media from "@/pages/Media";
+import Settings from "@/pages/Settings";
 import ToastContainer from "@/components/Toast";
 import Background from "@/theme/Background";
 import { ThemeProvider } from "@/theme/ThemeContext";
@@ -82,6 +83,10 @@ export default function App() {
           <Media />
         )}
       </div>
+      {/* Settings modal lives at the App level so it works regardless of
+          which tab is active — Dashboard used to own it, but unmounting on
+          tab switch made the gear button no-op on Media. */}
+      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
       <ToastContainer />
     </ThemeProvider>
   );

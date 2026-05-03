@@ -1,5 +1,4 @@
 import type { DownloadInfo } from "@/ws/events";
-import { openDownload } from "@/api/downloads";
 import styles from "./MediaCard.module.css";
 
 interface MediaCardProps {
@@ -19,8 +18,11 @@ function extractYear(isoDate: string): string {
 }
 
 export default function MediaCard({ download: d }: MediaCardProps) {
+  // Stream the file inline in a new tab — the same affordance the Completed
+  // table uses. The previous behavior (openDownload) hit /open which only
+  // works on a host file manager and 501s on remote backends.
   const handleOpen = () => {
-    openDownload(d.id).catch(console.error);
+    window.open(`/api/downloads/${d.id}/stream`, "_blank");
   };
 
   return (

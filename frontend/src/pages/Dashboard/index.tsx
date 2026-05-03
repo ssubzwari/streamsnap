@@ -1,6 +1,5 @@
 import { useEffect, useReducer, useState } from "react";
 
-import Settings from "@/pages/Settings";
 import { SkeletonRow } from "@/components/Skeleton";
 import CategoryPicker, { type CategoryPickerValue } from "@/components/CategoryPicker";
 import {
@@ -1578,8 +1577,9 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
         </div>
       )}
 
-      {/* ── Settings modal ── */}
-      {settingsOpen && <Settings onClose={onCloseSettings} />}
+      {/* Settings modal lives in App.tsx so it's reachable from the Media
+          tab too — keeping it here would mean unmounting it whenever the
+          user switches tabs, breaking the gear button on Media. */}
     </div>
   );
 }
