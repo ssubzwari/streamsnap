@@ -7,6 +7,9 @@ export interface SubscriptionCreate {
   format_spec?: string;
   download_existing?: boolean;
   notify?: boolean;
+  category?: string | null;
+  subcategory?: string | null;
+  tag?: string | null;
 }
 
 export interface SubscriptionUpdate {
@@ -14,6 +17,9 @@ export interface SubscriptionUpdate {
   format_spec?: string;
   is_active?: boolean;
   notify?: boolean;
+  category?: string | null;
+  subcategory?: string | null;
+  tag?: string | null;
 }
 
 export async function listSubscriptions(): Promise<SubscriptionInfo[]> {

@@ -2,7 +2,16 @@ import { useEffect, useReducer, useState } from "react";
 
 import Settings from "@/pages/Settings";
 import { SkeletonRow } from "@/components/Skeleton";
-import { createDownload, deleteDownload, downloadPlaylist, listDownloads, openDownload } from "@/api/downloads";
+import CategoryPicker, { type CategoryPickerValue } from "@/components/CategoryPicker";
+import {
+  createDownload,
+  deleteDownload,
+  downloadFileUrl,
+  downloadPlaylist,
+  listCategories,
+  listDownloads,
+  type CategoryTree,
+} from "@/api/downloads";
 import { resolveMetadata } from "@/api/metadata";
 import { getSettings, updateSettings } from "@/api/settings";
 import {
@@ -28,7 +37,7 @@ import styles from "./Dashboard.module.css";
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 const TrashIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6" />
     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     <line x1="10" y1="11" x2="10" y2="17" />
@@ -37,31 +46,57 @@ const TrashIcon = () => (
 );
 
 const PlayIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round">
     <polygon points="6 4 20 12 6 20 6 4" />
   </svg>
 );
 
 const BellIcon = ({ muted = false }: { muted?: boolean }) => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
     <path d="M13.73 21a2 2 0 0 1-3.46 0" />
     {muted && <line x1="1" y1="1" x2="23" y2="23" />}
   </svg>
 );
 
-const FolderOpenIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    <line x1="12" y1="11" x2="12" y2="17" />
-    <polyline points="9 14 12 11 15 14" />
+const DownloadIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+);
+
+const CopyIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
   </svg>
 );
 
 const RefreshIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="23 4 23 10 17 10" />
     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+  </svg>
+);
+
+const ChevronIcon = ({ open }: { open: boolean }) => (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{
+      transform: open ? "rotate(90deg)" : "rotate(0deg)",
+      transition: "transform var(--dur-fast) var(--ease-out)",
+    }}
+  >
+    <polyline points="9 6 15 12 9 18" />
   </svg>
 );
 
@@ -185,14 +220,6 @@ function qualityLabel(d: DownloadInfo): string {
   return "\u2014";
 }
 
-function codecLabel(d: DownloadInfo): string {
-  const parts = [];
-  if (d.vcodec && d.vcodec !== "none") parts.push(d.vcodec.split(".")[0]);
-  if (d.acodec && d.acodec !== "none") parts.push(d.acodec.split(".")[0]);
-  if (parts.length) return parts.join(" / ");
-  return d.ext ?? "\u2014";
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface DashboardProps {
@@ -209,9 +236,45 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
   const [quality, setQuality] = useState("best");
   const [format, setFormat] = useState("auto");
   const [codec, setCodec] = useState("auto");
-  const [mediaCategory, setMediaCategory] = useState("none");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // ── Category state (shared by Download + Subscribe in this row) ──────────
+  const [categoryValue, setCategoryValue] = useState<CategoryPickerValue>({
+    category: "",
+    subcategory: "",
+    tag: "",
+  });
+  const [categoryTree, setCategoryTree] = useState<CategoryTree | null>(null);
+
+  // ── Toast / status banner ────────────────────────────────────────────────
+  const [statusToast, setStatusToast] = useState<string | null>(null);
+
+  // ── Collapsible section state ────────────────────────────────────────────
+  // Persisted to localStorage so the layout sticks across reloads.
+  const [openSections, setOpenSections] = useState<{
+    downloading: boolean;
+    completed: boolean;
+    subscriptions: boolean;
+  }>(() => {
+    try {
+      const raw = localStorage.getItem("metubeplus.openSections");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return { downloading: true, completed: true, subscriptions: true };
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "metubeplus.openSections",
+        JSON.stringify(openSections),
+      );
+    } catch {}
+  }, [openSections]);
+
+  const toggleSection = (key: keyof typeof openSections) =>
+    setOpenSections((s) => ({ ...s, [key]: !s[key] }));
 
   // ── Advanced options state ────────────────────────────────────────────────
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -274,7 +337,22 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
           setOptionPresets(settings.option_presets);
       })
       .catch(console.error);
+
+    listCategories().then(setCategoryTree).catch(console.error);
   }, []);
+
+  // Auto-dismiss the status toast (used by Copy URL feedback).
+  useEffect(() => {
+    if (!statusToast) return;
+    const t = setTimeout(() => setStatusToast(null), 2000);
+    return () => clearTimeout(t);
+  }, [statusToast]);
+
+  // Refresh the category tree whenever a new download lands so freshly-typed
+  // categories show up as autocomplete options on the next submission.
+  const refreshCategoryTree = () => {
+    listCategories().then(setCategoryTree).catch(console.error);
+  };
 
   // ── WebSocket listeners ───────────────────────────────────────────────────
   useEffect(() => {
@@ -389,9 +467,12 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
         title: meta.title,
         thumbnail: meta.thumbnail ?? undefined,
         duration: meta.duration ?? undefined,
-        media_category: mediaCategory !== "none" ? mediaCategory : undefined,
+        category: categoryValue.category || null,
+        subcategory: categoryValue.subcategory || null,
+        tag: categoryValue.tag || null,
       });
       setUrl("");
+      refreshCategoryTree();
     } catch (err) {
       let message = String(err);
       try {
@@ -403,8 +484,15 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
       if (message === "PLAYLIST_URL") {
         try {
           const formatSpec = buildFormatSpec(type, quality, format, codec);
-          await downloadPlaylist(trimmed, formatSpec, mediaCategory !== "none" ? mediaCategory : undefined);
+          await downloadPlaylist(
+            trimmed,
+            formatSpec,
+            categoryValue.category || null,
+            categoryValue.subcategory || null,
+            categoryValue.tag || null,
+          );
           setUrl("");
+          refreshCategoryTree();
           return;
         } catch (playlistErr) {
           let plMsg = String(playlistErr);
@@ -436,9 +524,13 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
         format_spec: buildFormatSpec(type, quality, format, codec),
         download_existing: subDownloadExisting,
         notify: subNotify,
+        category: categoryValue.category || null,
+        subcategory: categoryValue.subcategory || null,
+        tag: categoryValue.tag || null,
       });
       dispatchSubs({ type: "ADD", sub });
       setUrl("");
+      refreshCategoryTree();
     } catch (err) {
       let message = String(err);
       try {
@@ -537,6 +629,32 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
   const handleCopyUrls = () => {
     const allUrls = downloads.map((d) => d.url).join("\n");
     navigator.clipboard.writeText(allUrls).catch(console.error);
+    setStatusToast(`Copied ${downloads.length} URL(s) to clipboard`);
+  };
+
+  // Copy a single URL (download row or subscription row) and show feedback.
+  const handleCopyUrl = async (target: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(target);
+      setStatusToast(`Copied ${label} URL`);
+    } catch (err) {
+      console.error(err);
+      setStatusToast("Copy failed — clipboard blocked");
+    }
+  };
+
+  // Trigger a browser save of a completed download. Replaces the legacy
+  // "open in file explorer" action which only worked when the backend ran on
+  // the same machine as the user.
+  const handleDownloadFile = (id: number, title: string | null) => {
+    const a = document.createElement("a");
+    a.href = downloadFileUrl(id);
+    // Hint to the browser this is a save, not a navigation. The server also
+    // sets Content-Disposition: attachment, so this is belt-and-braces.
+    a.setAttribute("download", title ?? "download");
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   const handleExportUrls = () => {
@@ -740,20 +858,15 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
                 {type === "video" && <option value="360">360p</option>}
               </select>
             </label>
-            <label className={styles.dropdownLabel}>
-              Category
-              <select
-                className={styles.dropdown}
-                value={mediaCategory}
-                onChange={(e) => setMediaCategory(e.target.value)}
-              >
-                <option value="none">None</option>
-                <option value="movies">Movie</option>
-                <option value="tv">TV Show</option>
-                <option value="music">Music</option>
-              </select>
-            </label>
           </div>
+
+          {/* Category / subcategory / tag — applied to both Download and
+              Subscribe submissions in this row. */}
+          <CategoryPicker
+            value={categoryValue}
+            onChange={setCategoryValue}
+            tree={categoryTree}
+          />
 
           {submitError && (
             <p className={styles.errorMsg}>{submitError}</p>
@@ -907,7 +1020,19 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
         {/* ── Downloading section ── */}
         <section className={styles.tableSection}>
           <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Downloading</h2>
+            <button
+              type="button"
+              className={styles.sectionToggle}
+              onClick={() => toggleSection("downloading")}
+              aria-expanded={openSections.downloading}
+              title={openSections.downloading ? "Collapse" : "Expand"}
+            >
+              <ChevronIcon open={openSections.downloading} />
+              <h2 className={styles.sectionTitle}>Downloading</h2>
+              {activeDownloads.length > 0 && (
+                <span className={styles.sectionCount}>{activeDownloads.length}</span>
+              )}
+            </button>
             <div className={styles.sectionActions}>
               <button
                 className={styles.ghostBtn}
@@ -922,7 +1047,7 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
             </div>
           </div>
 
-          {loadingDownloads ? (
+          {!openSections.downloading ? null : loadingDownloads ? (
             <div className={styles.tableScroll}><table className={styles.table}>
               <tbody>
                 <SkeletonRow />
@@ -1028,8 +1153,22 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
         {/* ── Completed section ── */}
         <section className={styles.tableSection}>
           <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Completed</h2>
+            <button
+              type="button"
+              className={styles.sectionToggle}
+              onClick={() => toggleSection("completed")}
+              aria-expanded={openSections.completed}
+              title={openSections.completed ? "Collapse" : "Expand"}
+            >
+              <ChevronIcon open={openSections.completed} />
+              <h2 className={styles.sectionTitle}>Completed</h2>
+              {completedDownloads.length > 0 && (
+                <span className={styles.sectionCount}>{completedDownloads.length}</span>
+              )}
+            </button>
           </div>
+          {openSections.completed && (
+          <div className={styles.sectionBody}>
           <div className={styles.completedToolbar}>
             <button
               className={styles.sortBtn}
@@ -1087,13 +1226,11 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
             <div className={styles.tableScroll}><table className={styles.table}>
               <colgroup>
                 <col style={{ width: "36px" }} />
-                <col style={{ width: "40%" }} />
+                <col style={{ width: "100%" }} />
                 <col style={{ width: "80px" }} />
-                <col style={{ width: "80px" }} />
-                <col style={{ width: "120px" }} />
                 <col style={{ width: "100px" }} />
                 <col style={{ width: "150px" }} />
-                <col style={{ width: "160px" }} />
+                <col style={{ width: "200px" }} />
               </colgroup>
               <thead>
                 <tr>
@@ -1107,8 +1244,6 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
                   </th>
                   <th>Video</th>
                   <th>Type</th>
-                  <th>Quality</th>
-                  <th>Codec / Format</th>
                   <th>File Size</th>
                   <th>Downloaded</th>
                   <th>Actions</th>
@@ -1159,8 +1294,6 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
                     <td className={styles.metaCell}>
                       {d.vcodec === "none" ? "Audio" : "Video"}
                     </td>
-                    <td className={`${styles.metaCell} ${styles.qualityCell}`} title={qualityLabel(d)}>{qualityLabel(d)}</td>
-                    <td className={styles.metaCell}>{codecLabel(d)}</td>
                     <td className={styles.metaCell}>{formatBytes(d.filesize)}</td>
                     <td className={styles.metaCell}>{formatDate(d.updated_at)}</td>
                     <td>
@@ -1178,13 +1311,20 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
                             </button>
                             <button
                               className={styles.iconBtn}
-                              onClick={() => openDownload(d.id).catch(console.error)}
-                              title="Open file in Explorer"
+                              onClick={() => handleDownloadFile(d.id, d.title)}
+                              title="Download file"
                             >
-                              <FolderOpenIcon />
+                              <DownloadIcon />
                             </button>
                           </>
                         )}
+                        <button
+                          className={styles.iconBtn}
+                          onClick={() => handleCopyUrl(d.url, "video")}
+                          title="Copy video URL"
+                        >
+                          <CopyIcon />
+                        </button>
                         <button
                           className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
                           onClick={() => handleDelete(d.id)}
@@ -1199,12 +1339,26 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
               </tbody>
             </table></div>
           )}
+          </div>
+          )}
         </section>
 
         {/* ── Subscriptions section ── */}
         <section className={styles.tableSection}>
           <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Subscriptions</h2>
+            <button
+              type="button"
+              className={styles.sectionToggle}
+              onClick={() => toggleSection("subscriptions")}
+              aria-expanded={openSections.subscriptions}
+              title={openSections.subscriptions ? "Collapse" : "Expand"}
+            >
+              <ChevronIcon open={openSections.subscriptions} />
+              <h2 className={styles.sectionTitle}>Subscriptions</h2>
+              {subs.length > 0 && (
+                <span className={styles.sectionCount}>{subs.length}</span>
+              )}
+            </button>
             <div className={styles.sectionActions}>
               <button
                 className={styles.accentBtn}
@@ -1222,6 +1376,8 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
             </div>
           </div>
 
+          {openSections.subscriptions && (
+          <div className={styles.sectionBody}>
           {/* Add subscription form */}
           {addSubOpen && (
             <div className={styles.addSubForm}>
@@ -1383,6 +1539,13 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
                         </button>
                         <button
                           className={styles.iconBtn}
+                          onClick={() => handleCopyUrl(s.url, "playlist")}
+                          title="Copy playlist URL"
+                        >
+                          <CopyIcon />
+                        </button>
+                        <button
+                          className={styles.iconBtn}
                           onClick={() => handleToggleSubNotify(s)}
                           title={s.notify ? "Notifications on — click to mute" : "Notifications muted — click to enable"}
                           style={{ opacity: s.notify ? 1 : 0.5 }}
@@ -1403,8 +1566,17 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
               </tbody>
             </table></div>
           )}
+          </div>
+          )}
         </section>
       </main>
+
+      {/* ── Status toast (Copy URL feedback, etc.) ── */}
+      {statusToast && (
+        <div className={styles.statusToast} role="status">
+          {statusToast}
+        </div>
+      )}
 
       {/* ── Settings modal ── */}
       {settingsOpen && <Settings onClose={onCloseSettings} />}

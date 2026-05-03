@@ -6,6 +6,8 @@ interface MediaCardProps {
   download: DownloadInfo;
 }
 
+// Lowercase aliases preserved for any data carried over from the older
+// `media_category` field that used "movies"/"tv"/"music".
 const CATEGORY_LABELS: Record<string, string> = {
   movies: "Movie",
   tv: "TV",
@@ -54,9 +56,9 @@ export default function MediaCard({ download: d }: MediaCardProps) {
           </div>
         </div>
 
-        {d.media_category && d.media_category !== "none" && (
+        {d.category && d.category !== "none" && (
           <span className={styles.badge}>
-            {CATEGORY_LABELS[d.media_category] ?? d.media_category}
+            {CATEGORY_LABELS[d.category] ?? d.category}
           </span>
         )}
       </div>

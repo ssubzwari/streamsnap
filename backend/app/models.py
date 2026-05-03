@@ -22,13 +22,17 @@ class Download(Base):
     output_path: Mapped[str | None] = mapped_column(String)
     error_message: Mapped[str | None] = mapped_column(String)
     subscription_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("subscriptions.id"), nullable=True)
+    # User-defined organization. All three are optional. When present they
+    # become folder levels under DOWNLOAD_DIR (category/subcategory/tag/file).
+    category: Mapped[str | None] = mapped_column(String, nullable=True)
+    subcategory: Mapped[str | None] = mapped_column(String, nullable=True)
+    tag: Mapped[str | None] = mapped_column(String, nullable=True)
     # Format info populated on completion
     ext: Mapped[str | None] = mapped_column(String)
     filesize: Mapped[int | None]
     height: Mapped[int | None]
     vcodec: Mapped[str | None] = mapped_column(String)
     acodec: Mapped[str | None] = mapped_column(String)
-    media_category: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -49,6 +53,10 @@ class Subscription(Base):
     # When False, new_video / subscription_error notifications for this sub
     # are suppressed (downloads still happen, they just don't alert).
     notify: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Category structure inherited by every Download spawned from this sub.
+    category: Mapped[str | None] = mapped_column(String, nullable=True)
+    subcategory: Mapped[str | None] = mapped_column(String, nullable=True)
+    tag: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

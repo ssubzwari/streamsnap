@@ -54,15 +54,31 @@ export default function Media() {
     };
   }, []);
 
+  // Map a filter key to the category labels we treat as matching it.
+  // The new picker stores user-entered text ("TV", "Movie", …) while older
+  // beta data used short keys ("tv", "movies"); we accept both.
+  const FILTER_ALIASES: Record<MediaFilter, string[]> = {
+    all: [],
+    movies: ["movies", "movie"],
+    tv: ["tv", "tv show", "tv shows"],
+    music: ["music"],
+  };
+
+  const matchesFilter = (d: DownloadInfo, key: MediaFilter): boolean => {
+    if (key === "all") return true;
+    const cat = (d.category ?? "").trim().toLowerCase();
+    return FILTER_ALIASES[key].includes(cat);
+  };
+
   const countFor = (key: MediaFilter) =>
     key === "all"
       ? downloads.length
-      : downloads.filter((d) => d.media_category === key).length;
+      : downloads.filter((d) => matchesFilter(d, key)).length;
 
   const filtered =
     filter === "all"
       ? downloads
-      : downloads.filter((d) => d.media_category === filter);
+      : downloads.filter((d) => matchesFilter(d, filter));
 
   return (
     <div className={styles.page}>

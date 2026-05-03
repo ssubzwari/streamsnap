@@ -4,7 +4,7 @@
     {
       "name": "Backend (FastAPI + uvicorn)",
       "runtimeExecutable": "D:\\Claude\\MetubePlus\\backend\\.venv\\Scripts\\uvicorn.exe",
-      "runtimeArgs": ["app.main:socket_app", "--reload"],
+      "runtimeArgs": ["app.main:socket_app", "--reload", "--port", "8088"],
       "cwd": "${workspaceFolder}/backend",
       "port": 8088
     },

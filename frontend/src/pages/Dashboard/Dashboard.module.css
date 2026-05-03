@@ -189,6 +189,29 @@
   cursor: not-allowed;
 }
 
+/* ── Status toast (Copy URL feedback, etc.) ─────────────────────────────────── */
+
+.statusToast {
+  position: fixed;
+  bottom: var(--space-5);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-surface-hi);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  animation: toastIn var(--dur-base) var(--ease-out);
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
 /* ── Format dropdowns row ───────────────────────────────────────────────────── */
 
 .formatRow {
@@ -474,6 +497,47 @@
   margin: 0;
 }
 
+/* Wraps the chevron + title + count so the whole left side of the section
+   header is one big click target. */
+.sectionToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text);
+  padding: 0;
+  margin: 0;
+}
+
+.sectionToggle:hover {
+  color: var(--color-accent);
+}
+
+.sectionToggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Wrapper for the collapsible body of a section. Currently transparent —
+   exists so the parent <section> can still own its border/radius while we
+   show/hide all the inner content together. */
+.sectionBody {
+  display: contents;
+}
+
+.sectionCount {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
 .sectionActions {
   display: flex;
   gap: var(--space-2);
@@ -654,6 +718,17 @@
   transition: color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out);
   line-height: 1;
+  /* Prevent the action-row flex container from shrinking icons when the
+     parent table column gets squeezed by table-layout: auto. Without this
+     the SVGs collapse to ~12px wide in narrow viewports. */
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconBtn svg {
+  flex-shrink: 0;
 }
 
 .iconBtn:hover:not(:disabled) {

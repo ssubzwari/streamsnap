@@ -10,6 +10,25 @@ def safe_folder_name(name: str) -> str:
     return safe[:80] or "playlist"
 
 
+def category_subdir(
+    category: str | None,
+    subcategory: str | None,
+    tag: str | None,
+) -> str:
+    """Build a sanitized relative path from category/subcategory/tag.
+
+    Empty levels are skipped — so passing only ("Movie", None, None) yields
+    "Movie", and ("TV", "Show", "Season 1") yields "TV/Show/Season 1".
+    Returns "" when all three are empty so callers can join unconditionally.
+    """
+    parts = [
+        safe_folder_name(p)
+        for p in (category, subcategory, tag)
+        if p and p.strip()
+    ]
+    return "/".join(parts)
+
+
 # Extensions we consider "a finished media file" when probing the download
 # folder. Kept in sync with the container/audio codecs yt-dlp commonly emits.
 MEDIA_EXTS: tuple[str, ...] = (

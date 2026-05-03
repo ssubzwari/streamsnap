@@ -14,7 +14,7 @@ from app.models import Download
 from app.schemas import DownloadCreateRequest, DownloadInfo
 from app.services.download_manager import download_manager
 from app.services.notifications import create_notification
-from app.utils import find_existing_file, safe_folder_name
+from app.utils import category_subdir, find_existing_file, safe_folder_name
 from app.ws import emit_download_added, emit_download_completed
 
 router = APIRouter(prefix="/api/downloads", tags=["downloads"])
@@ -25,11 +25,20 @@ async def create_download(
     req: DownloadCreateRequest,
     session: AsyncSession = Depends(get_session),
 ) -> DownloadInfo:
-    # Probe the download folder *before* enqueuing. If a file with the same
+    # Resolve the destination folder from category/subcategory/tag.
+    # When all three are empty we fall back to settings.DOWNLOAD_DIR.
+    rel = category_subdir(req.category, req.subcategory, req.tag)
+    if rel:
+        download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel)
+        pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
+    else:
+        download_dir = settings.DOWNLOAD_DIR
+
+    # Probe the resolved folder *before* enqueuing. If a file with the same
     # title is already on disk (from a previous run, a manual copy, or a DB
     # wipe that left the files behind), record a completed row pointing at
     # the existing file instead of re-downloading.
-    existing_path = find_existing_file(settings.DOWNLOAD_DIR, req.title)
+    existing_path = find_existing_file(download_dir, req.title)
 
     download = Download(
         url=req.url,
@@ -40,7 +49,9 @@ async def create_download(
         status="completed" if existing_path else "queued",
         percent=100.0 if existing_path else 0.0,
         output_path=existing_path,
-        media_category=req.media_category,
+        category=req.category,
+        subcategory=req.subcategory,
+        tag=req.tag,
     )
     session.add(download)
     await session.commit()
@@ -61,14 +72,18 @@ async def create_download(
         )
         return info
 
-    await download_manager.enqueue(download.id, req.url, req.format_spec)
+    await download_manager.enqueue(
+        download.id, req.url, req.format_spec, download_dir if rel else None
+    )
     return info
 
 
 class PlaylistDownloadRequest(BaseModel):
     url: str
     format_spec: str = "bestvideo*+bestaudio/best"
-    media_category: str | None = None
+    category: str | None = None
+    subcategory: str | None = None
+    tag: str | None = None
 
 
 @router.post("/playlist", response_model=list[DownloadInfo], status_code=201)
@@ -96,9 +111,15 @@ async def download_playlist(
         deduped.append(entry)
     playlist_data["entries"] = deduped
 
-    # Create per-playlist folder
+    # Create destination folder. When the user picked a category we use
+    # category/subcategory/tag/<playlist-title>; otherwise just the playlist
+    # title under DOWNLOAD_DIR (legacy behavior).
     folder_name = safe_folder_name(playlist_data["title"])
-    download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
+    rel = category_subdir(req.category, req.subcategory, req.tag)
+    if rel:
+        download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel / folder_name)
+    else:
+        download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
     pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
 
     results: list[DownloadInfo] = []
@@ -117,7 +138,9 @@ async def download_playlist(
             status="completed" if existing_path else "queued",
             percent=100.0 if existing_path else 0.0,
             output_path=existing_path,
-            media_category=req.media_category,
+            category=req.category,
+            subcategory=req.subcategory,
+            tag=req.tag,
         )
         session.add(dl)
         await session.flush()
@@ -162,6 +185,55 @@ async def export_downloads(session: AsyncSession = Depends(get_session)) -> Resp
     )
     urls = "\n".join(result.scalars())
     return Response(content=urls, media_type="text/plain")
+
+
+# Default seed categories users get even before they've created any download —
+# matches the example structure (TV/Movie/Music/Learning) the user described.
+_DEFAULT_CATEGORIES = ("TV", "Movie", "Music", "Learning")
+
+
+@router.get("/categories")
+async def list_categories(session: AsyncSession = Depends(get_session)) -> dict:
+    """Return the {category: {subcategory: [tags]}} tree built from existing
+    downloads + subscriptions. Used to populate the autocomplete UI.
+
+    Empty levels are pruned. Default seed categories are merged in so the
+    dropdown is never empty for new users.
+    """
+    from app.models import Subscription
+
+    tree: dict[str, dict[str, set[str]]] = {
+        cat: {} for cat in _DEFAULT_CATEGORIES
+    }
+
+    def _add(cat: str | None, sub: str | None, tag: str | None) -> None:
+        if not cat:
+            return
+        cat_node = tree.setdefault(cat, {})
+        if sub:
+            tag_set = cat_node.setdefault(sub, set())
+            if tag:
+                tag_set.add(tag)
+
+    dl_rows = await session.execute(
+        select(Download.category, Download.subcategory, Download.tag)
+    )
+    for cat, sub, tag in dl_rows:
+        _add(cat, sub, tag)
+
+    sub_rows = await session.execute(
+        select(Subscription.category, Subscription.subcategory, Subscription.tag)
+    )
+    for cat, sub, tag in sub_rows:
+        _add(cat, sub, tag)
+
+    # Convert sets → sorted lists for JSON serialization.
+    return {
+        "categories": {
+            cat: {sub: sorted(tags) for sub, tags in subs.items()}
+            for cat, subs in tree.items()
+        }
+    }
 
 
 @router.get("/{download_id}/open")
@@ -255,6 +327,38 @@ def _resolve_output_path(stored: str | None) -> str | None:
         if os.path.isfile(candidate):
             return os.path.abspath(candidate)
     return None
+
+
+@router.get("/{download_id}/file")
+async def download_file(
+    download_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    """Serve the downloaded file as an HTTP attachment so the browser saves
+    it to disk instead of playing it inline. Used by the "Download file"
+    action in the completed-downloads list — replaces the previous
+    "Open in file explorer" affordance, which only worked on the host machine.
+    """
+    import os
+
+    download = await session.get(Download, download_id)
+    if not download:
+        raise HTTPException(status_code=404, detail="Download not found")
+
+    filepath = _resolve_output_path(download.output_path)
+    if not filepath:
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    media_type, _ = mimetypes.guess_type(filepath)
+    if media_type is None:
+        media_type = "application/octet-stream"
+
+    return FileResponse(
+        filepath,
+        media_type=media_type,
+        filename=os.path.basename(filepath),
+        content_disposition_type="attachment",
+    )
 
 
 @router.get("/{download_id}/stream")

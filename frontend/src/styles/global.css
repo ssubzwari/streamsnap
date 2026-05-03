@@ -8,7 +8,10 @@
 
 html,
 body {
-  background-color: transparent;
+  /* Use the theme token so body falls back to the right color when the
+     animated background is set to "none". Without this, an unstyled body
+     reveals the browser's default white behind the dark surface cards. */
+  background-color: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
   font-size: var(--text-base);

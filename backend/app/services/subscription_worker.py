@@ -52,6 +52,9 @@ async def check_subscription(subscription_id: int) -> None:
         sub_title = sub.title or url
         download_dir = sub.download_dir
         notify_enabled = sub.notify
+        sub_category = sub.category
+        sub_subcategory = sub.subcategory
+        sub_tag = sub.tag
 
     # Extract flat playlist in a thread (blocking I/O)
     try:
@@ -118,6 +121,9 @@ async def check_subscription(subscription_id: int) -> None:
                 percent=100.0 if existing_path else 0.0,
                 output_path=existing_path,
                 subscription_id=subscription_id,
+                category=sub_category,
+                subcategory=sub_subcategory,
+                tag=sub_tag,
             )
             session.add(dl)
             await session.flush()  # populate dl.id before committing
