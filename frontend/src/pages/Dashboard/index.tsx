@@ -277,10 +277,11 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
     setOpenSections((s) => ({ ...s, [key]: !s[key] }));
 
   // ── Subscription group collapse state ────────────────────────────────────────
-  // Maps subscription_id to open/closed state. Persisted to localStorage.
-  const [openSubGroups, setOpenSubGroups] = useState<Set<number>>(() => {
+  // Tracks which groups are explicitly CLOSED. Groups are open by default.
+  // Persisted to localStorage.
+  const [closedSubGroups, setClosedSubGroups] = useState<Set<number>>(() => {
     try {
-      const raw = localStorage.getItem("metubeplus.openSubGroups");
+      const raw = localStorage.getItem("metubeplus.closedSubGroups");
       if (raw) return new Set(JSON.parse(raw));
     } catch {}
     return new Set();
@@ -289,14 +290,16 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
   useEffect(() => {
     try {
       localStorage.setItem(
-        "metubeplus.openSubGroups",
-        JSON.stringify(Array.from(openSubGroups)),
+        "metubeplus.closedSubGroups",
+        JSON.stringify(Array.from(closedSubGroups)),
       );
     } catch {}
-  }, [openSubGroups]);
+  }, [closedSubGroups]);
+
+  const isSubGroupOpen = (subId: number) => !closedSubGroups.has(subId);
 
   const toggleSubGroup = (subId: number) => {
-    setOpenSubGroups((prev) => {
+    setClosedSubGroups((prev) => {
       const next = new Set(prev);
       if (next.has(subId)) next.delete(subId);
       else next.add(subId);
@@ -387,8 +390,6 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
           ])
         );
         setSubMetadata(metadata);
-        // Pre-open all subscription groups by default
-        setOpenSubGroups(new Set(grouped.by_subscription.map((g) => g.subscription_id)));
       })
       .catch(console.error);
   }, []);
@@ -1336,7 +1337,7 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
               {Array.from(groupedCompleted.subGroups.entries()).map(([subId, dlsInGroup]) => {
                 const subMeta = subMetadata.get(subId);
                 const subTitle = subMeta?.subscription_title || `Subscription ${subId}`;
-                const isOpen = openSubGroups.has(subId);
+                const isOpen = isSubGroupOpen(subId);
                 return (
                   <div key={`sub-${subId}`} className={styles.downloadGroup}>
                     <button
@@ -1470,11 +1471,11 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
                     className={styles.groupHeader}
                     onClick={() => toggleSubGroup(0)}
                   >
-                    <ChevronIcon open={openSubGroups.has(0)} />
+                    <ChevronIcon open={isSubGroupOpen(0)} />
                     <span className={styles.groupTitle}>Other Completed Downloads</span>
                     <span className={styles.groupCount}>{groupedCompleted.manualDownloads.length}</span>
                   </button>
-                  {openSubGroups.has(0) && (
+                  {isSubGroupOpen(0) && (
                     <div className={styles.tableScroll}>
                       <table className={styles.table}>
                         <colgroup>

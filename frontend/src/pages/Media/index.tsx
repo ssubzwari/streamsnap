@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import MediaCard from "@/components/MediaCard";
-import { listDownloads, listTags } from "@/api/downloads";
+import { listDownloads } from "@/api/downloads";
 import { type DownloadInfo, WS_EVENTS } from "@/ws/events";
 import { getSocket } from "@/ws/socket";
 
@@ -27,7 +27,6 @@ export default function Media() {
   const [downloads, setDownloads] = useState<DownloadInfo[]>([]);
   const [filter, setFilter] = useState<MediaFilter>("all");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [tags, setTags] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,10 +34,6 @@ export default function Media() {
       .then((all) => setDownloads(all.filter((d) => d.status === "completed")))
       .catch(console.error)
       .finally(() => setLoading(false));
-
-    listTags()
-      .then((result) => setTags(result.tags))
-      .catch(console.error);
 
     const socket = getSocket();
 
@@ -78,26 +73,29 @@ export default function Media() {
 
   const matchesTag = (d: DownloadInfo): boolean => {
     if (!selectedTag) return true;
+    // Match against subcategory (show/album name) or tag (3rd level)
+    const sub = (d.subcategory ?? "").trim();
     const tag = (d.tag ?? "").trim();
-    return tag === selectedTag;
+    return sub === selectedTag || tag === selectedTag;
   };
 
   const countFor = (key: MediaFilter) =>
     key === "all"
-      ? downloads.filter((d) => matchesTag(d)).length
-      : downloads.filter((d) => matchesFilter(d, key) && matchesTag(d)).length;
+      ? downloads.length
+      : downloads.filter((d) => matchesFilter(d, key)).length;
 
   const filtered = downloads.filter((d) => matchesFilter(d, filter) && matchesTag(d));
 
-  // Get tags for current filter
+  // Derive tag labels from in-memory downloads for the current category filter.
+  // Uses subcategory (show/album name) and tag (3rd-level) — whichever is set.
   const currentTags = filter === "all" ? [] : (() => {
-    // Get tags from all categories that match the current filter
     const result: Set<string> = new Set();
-    for (const [catName, catTags] of Object.entries(tags)) {
-      const lowerCat = catName.toLowerCase();
-      if (FILTER_ALIASES[filter]?.some(alias => alias === lowerCat)) {
-        catTags?.forEach(t => result.add(t));
-      }
+    for (const d of downloads) {
+      if (!matchesFilter(d, filter)) continue;
+      const sub = (d.subcategory ?? "").trim();
+      const tag = (d.tag ?? "").trim();
+      if (sub) result.add(sub);
+      if (tag) result.add(tag);
     }
     return Array.from(result).sort();
   })();
