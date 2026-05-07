@@ -9,6 +9,7 @@ import {
   downloadPlaylist,
   listCategories,
   listDownloads,
+  listGroupedDownloads,
   type CategoryTree,
 } from "@/api/downloads";
 import { resolveMetadata } from "@/api/metadata";
@@ -275,6 +276,39 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
   const toggleSection = (key: keyof typeof openSections) =>
     setOpenSections((s) => ({ ...s, [key]: !s[key] }));
 
+  // ── Subscription group collapse state ────────────────────────────────────────
+  // Maps subscription_id to open/closed state. Persisted to localStorage.
+  const [openSubGroups, setOpenSubGroups] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem("metubeplus.openSubGroups");
+      if (raw) return new Set(JSON.parse(raw));
+    } catch {}
+    return new Set();
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "metubeplus.openSubGroups",
+        JSON.stringify(Array.from(openSubGroups)),
+      );
+    } catch {}
+  }, [openSubGroups]);
+
+  const toggleSubGroup = (subId: number) => {
+    setOpenSubGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(subId)) next.delete(subId);
+      else next.add(subId);
+      return next;
+    });
+  };
+
+  // ── Subscription metadata (title, etc.) ──────────────────────────────────────
+  const [subMetadata, setSubMetadata] = useState<
+    Map<number, { subscription_id: number; subscription_title: string }>
+  >(new Map());
+
   // ── Advanced options state ────────────────────────────────────────────────
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [downloadFolder, setDownloadFolder] = useState("Default");
@@ -300,6 +334,7 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
   const [subDownloadExisting, setSubDownloadExisting] = useState(false);
   const [subNotify, setSubNotify] = useState(true);
   const [subFormat, setSubFormat] = useState("best");
+  const [subCategory, setSubCategory] = useState("");
   const [subSubmitting, setSubSubmitting] = useState(false);
   const [subError, setSubError] = useState<string | null>(null);
   const [checkingSubId, setCheckingSubId] = useState<number | null>(null);
@@ -338,6 +373,24 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
       .catch(console.error);
 
     listCategories().then(setCategoryTree).catch(console.error);
+
+    // Load subscription metadata for grouping the Completed section
+    listGroupedDownloads()
+      .then((grouped) => {
+        const metadata = new Map(
+          grouped.by_subscription.map((g) => [
+            g.subscription_id,
+            {
+              subscription_id: g.subscription_id,
+              subscription_title: g.subscription_title,
+            },
+          ])
+        );
+        setSubMetadata(metadata);
+        // Pre-open all subscription groups by default
+        setOpenSubGroups(new Set(grouped.by_subscription.map((g) => g.subscription_id)));
+      })
+      .catch(console.error);
   }, []);
 
   // Auto-dismiss the status toast (used by Copy URL feedback).
@@ -423,6 +476,25 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
     /^[\d.]+\s*/,
     "",
   ) ?? "MB/s";
+
+  // ── Helper: organize completed downloads by subscription ──────────────────────
+  const groupedCompleted = (() => {
+    const subGroups: Map<number, DownloadInfo[]> = new Map();
+    const manualDownloads: DownloadInfo[] = [];
+
+    for (const d of completedDownloads) {
+      if (d.subscription_id !== null && d.subscription_id !== undefined) {
+        if (!subGroups.has(d.subscription_id)) {
+          subGroups.set(d.subscription_id, []);
+        }
+        subGroups.get(d.subscription_id)!.push(d);
+      } else {
+        manualDownloads.push(d);
+      }
+    }
+
+    return { subGroups, manualDownloads };
+  })();
 
   // ── Selection helpers ─────────────────────────────────────────────────────
   const toggleSelection = (
@@ -674,9 +746,11 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
         format_spec: subFormat,
         download_existing: subDownloadExisting,
         notify: subNotify,
+        category: subCategory || null,
       });
       dispatchSubs({ type: "ADD", sub });
       setSubUrl("");
+      setSubCategory("");
       setAddSubOpen(false);
     } catch (err) {
       let message = String(err);
@@ -857,6 +931,41 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
                 {type === "video" && <option value="360">360p</option>}
               </select>
             </label>
+          </div>
+
+          {/* ── Quick-tag buttons ── */}
+          <div className={styles.quickTagRow}>
+            <label className={styles.quickTagLabel}>Quick tag:</label>
+            <div className={styles.quickTagButtons}>
+              <button
+                type="button"
+                className={`${styles.quickTagBtn} ${categoryValue.category === "movie" ? styles.quickTagBtnActive : ""}`}
+                onClick={() => setCategoryValue({ ...categoryValue, category: "movie" })}
+              >
+                Movie
+              </button>
+              <button
+                type="button"
+                className={`${styles.quickTagBtn} ${categoryValue.category === "tv" ? styles.quickTagBtnActive : ""}`}
+                onClick={() => setCategoryValue({ ...categoryValue, category: "tv" })}
+              >
+                TV
+              </button>
+              <button
+                type="button"
+                className={`${styles.quickTagBtn} ${categoryValue.category === "music" ? styles.quickTagBtnActive : ""}`}
+                onClick={() => setCategoryValue({ ...categoryValue, category: "music" })}
+              >
+                Music
+              </button>
+              <button
+                type="button"
+                className={`${styles.quickTagBtn} ${categoryValue.category && !["movie", "tv", "music"].includes(categoryValue.category) ? styles.quickTagBtnActive : ""}`}
+                onClick={() => setCategoryValue({ ...categoryValue, category: "" })}
+              >
+                Custom
+              </button>
+            </div>
           </div>
 
           {/* Category / subcategory / tag — applied to both Download and
@@ -1222,121 +1331,262 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
               <p className={styles.emptyHint}>Finished downloads will appear here.</p>
             </div>
           ) : (
-            <div className={styles.tableScroll}><table className={styles.table}>
-              <colgroup>
-                <col style={{ width: "36px" }} />
-                <col style={{ width: "100%" }} />
-                <col style={{ width: "80px" }} />
-                <col style={{ width: "100px" }} />
-                <col style={{ width: "150px" }} />
-                <col style={{ width: "200px" }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      className={styles.checkbox}
-                      checked={completedDownloads.length > 0 && selectedCompleted.size === completedDownloads.length}
-                      onChange={() => toggleAllSelection(completedDownloads, selectedCompleted, setSelectedCompleted)}
-                    />
-                  </th>
-                  <th>Video</th>
-                  <th>Type</th>
-                  <th>File Size</th>
-                  <th>Downloaded</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {completedDownloads.map((d) => (
-                  <tr
-                    key={d.id}
-                    className={d.status === "failed" ? styles.rowFailed : ""}
+            <div className={styles.completedGroupsContainer}>
+              {/* ── Subscription groups ── */}
+              {Array.from(groupedCompleted.subGroups.entries()).map(([subId, dlsInGroup]) => {
+                const subMeta = subMetadata.get(subId);
+                const subTitle = subMeta?.subscription_title || `Subscription ${subId}`;
+                const isOpen = openSubGroups.has(subId);
+                return (
+                  <div key={`sub-${subId}`} className={styles.downloadGroup}>
+                    <button
+                      type="button"
+                      className={styles.groupHeader}
+                      onClick={() => toggleSubGroup(subId)}
+                    >
+                      <ChevronIcon open={isOpen} />
+                      <span className={styles.groupTitle}>{subTitle}</span>
+                      <span className={styles.groupCount}>{dlsInGroup.length}</span>
+                    </button>
+                    {isOpen && (
+                      <div className={styles.tableScroll}>
+                        <table className={styles.table}>
+                          <colgroup>
+                            <col style={{ width: "36px" }} />
+                            <col style={{ width: "100%" }} />
+                            <col style={{ width: "80px" }} />
+                            <col style={{ width: "100px" }} />
+                            <col style={{ width: "150px" }} />
+                            <col style={{ width: "200px" }} />
+                          </colgroup>
+                          <thead>
+                            <tr>
+                              <th>
+                                <input
+                                  type="checkbox"
+                                  className={styles.checkbox}
+                                  checked={dlsInGroup.length > 0 && dlsInGroup.every((d) => selectedCompleted.has(d.id))}
+                                  onChange={() => toggleAllSelection(dlsInGroup, selectedCompleted, setSelectedCompleted)}
+                                />
+                              </th>
+                              <th>Video</th>
+                              <th>Type</th>
+                              <th>File Size</th>
+                              <th>Downloaded</th>
+                              <th>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dlsInGroup.map((d) => (
+                              <tr key={d.id} className={d.status === "failed" ? styles.rowFailed : ""}>
+                                <td>
+                                  <input
+                                    type="checkbox"
+                                    className={styles.checkbox}
+                                    checked={selectedCompleted.has(d.id)}
+                                    onChange={() => toggleSelection(setSelectedCompleted, d.id)}
+                                  />
+                                </td>
+                                <td>
+                                  <div className={styles.videoCell}>
+                                    {d.thumbnail && (
+                                      <img className={styles.thumb} src={d.thumbnail} alt="" loading="lazy" />
+                                    )}
+                                    <div className={styles.videoCellText}>
+                                      {d.status === "completed" && d.output_path ? (
+                                        <button
+                                          type="button"
+                                          className={styles.videoTitleLink}
+                                          onClick={() => window.open(`/api/downloads/${d.id}/stream`, "_blank")}
+                                          title={`Play ${d.title ?? d.url}`}
+                                        >
+                                          {d.title ?? d.url}
+                                        </button>
+                                      ) : (
+                                        <span className={styles.videoTitle} title={d.title ?? d.url}>
+                                          {d.title ?? d.url}
+                                        </span>
+                                      )}
+                                      {d.status === "failed" && d.error_message && (
+                                        <span className={styles.errorInline}>{d.error_message}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className={styles.metaCell}>{d.vcodec === "none" ? "Audio" : "Video"}</td>
+                                <td className={styles.metaCell}>{formatBytes(d.filesize)}</td>
+                                <td className={styles.metaCell}>{formatDate(d.updated_at)}</td>
+                                <td>
+                                  <div className={styles.rowActions}>
+                                    {d.status === "completed" && d.output_path && (
+                                      <>
+                                        <button
+                                          className={styles.iconBtn}
+                                          onClick={() => window.open(`/api/downloads/${d.id}/stream`, "_blank")}
+                                          title="Play in new tab"
+                                        >
+                                          <PlayIcon />
+                                        </button>
+                                        <button
+                                          className={styles.iconBtn}
+                                          onClick={() => handleDownloadFile(d.id, d.title)}
+                                          title="Download file"
+                                        >
+                                          <DownloadIcon />
+                                        </button>
+                                      </>
+                                    )}
+                                    <button
+                                      className={styles.iconBtn}
+                                      onClick={() => handleCopyUrl(d.url, "video")}
+                                      title="Copy video URL"
+                                    >
+                                      <CopyIcon />
+                                    </button>
+                                    <button
+                                      className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                                      onClick={() => handleDelete(d.id)}
+                                      title="Remove"
+                                    >
+                                      <TrashIcon />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* ── "Other Completed Downloads" group for manual downloads ── */}
+              {groupedCompleted.manualDownloads.length > 0 && (
+                <div className={styles.downloadGroup}>
+                  <button
+                    type="button"
+                    className={styles.groupHeader}
+                    onClick={() => toggleSubGroup(0)}
                   >
-                    <td>
-                      <input
-                        type="checkbox"
-                        className={styles.checkbox}
-                        checked={selectedCompleted.has(d.id)}
-                        onChange={() => toggleSelection(setSelectedCompleted, d.id)}
-                      />
-                    </td>
-                    <td>
-                      <div className={styles.videoCell}>
-                        {d.thumbnail && (
-                          <img className={styles.thumb} src={d.thumbnail} alt="" loading="lazy" />
-                        )}
-                        <div className={styles.videoCellText}>
-                          {d.status === "completed" && d.output_path ? (
-                            <button
-                              type="button"
-                              className={styles.videoTitleLink}
-                              title={`Play ${d.title ?? d.url}`}
-                              onClick={() =>
-                                window.open(`/api/downloads/${d.id}/stream`, "_blank")
-                              }
-                            >
-                              {d.title ?? d.url}
-                            </button>
-                          ) : (
-                            <span className={styles.videoTitle} title={d.title ?? d.url}>
-                              {d.title ?? d.url}
-                            </span>
-                          )}
-                          {d.status === "failed" && d.error_message && (
-                            <span className={styles.errorInline}>{d.error_message}</span>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className={styles.metaCell}>
-                      {d.vcodec === "none" ? "Audio" : "Video"}
-                    </td>
-                    <td className={styles.metaCell}>{formatBytes(d.filesize)}</td>
-                    <td className={styles.metaCell}>{formatDate(d.updated_at)}</td>
-                    <td>
-                      <div className={styles.rowActions}>
-                        {d.status === "completed" && d.output_path && (
-                          <>
-                            <button
-                              className={styles.iconBtn}
-                              onClick={() =>
-                                window.open(`/api/downloads/${d.id}/stream`, "_blank")
-                              }
-                              title="Play in new tab"
-                            >
-                              <PlayIcon />
-                            </button>
-                            <button
-                              className={styles.iconBtn}
-                              onClick={() => handleDownloadFile(d.id, d.title)}
-                              title="Download file"
-                            >
-                              <DownloadIcon />
-                            </button>
-                          </>
-                        )}
-                        <button
-                          className={styles.iconBtn}
-                          onClick={() => handleCopyUrl(d.url, "video")}
-                          title="Copy video URL"
-                        >
-                          <CopyIcon />
-                        </button>
-                        <button
-                          className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-                          onClick={() => handleDelete(d.id)}
-                          title="Remove"
-                        >
-                          <TrashIcon />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table></div>
+                    <ChevronIcon open={openSubGroups.has(0)} />
+                    <span className={styles.groupTitle}>Other Completed Downloads</span>
+                    <span className={styles.groupCount}>{groupedCompleted.manualDownloads.length}</span>
+                  </button>
+                  {openSubGroups.has(0) && (
+                    <div className={styles.tableScroll}>
+                      <table className={styles.table}>
+                        <colgroup>
+                          <col style={{ width: "36px" }} />
+                          <col style={{ width: "100%" }} />
+                          <col style={{ width: "80px" }} />
+                          <col style={{ width: "100px" }} />
+                          <col style={{ width: "150px" }} />
+                          <col style={{ width: "200px" }} />
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            <th>
+                              <input
+                                type="checkbox"
+                                className={styles.checkbox}
+                                checked={groupedCompleted.manualDownloads.length > 0 && groupedCompleted.manualDownloads.every((d) => selectedCompleted.has(d.id))}
+                                onChange={() => toggleAllSelection(groupedCompleted.manualDownloads, selectedCompleted, setSelectedCompleted)}
+                              />
+                            </th>
+                            <th>Video</th>
+                            <th>Type</th>
+                            <th>File Size</th>
+                            <th>Downloaded</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groupedCompleted.manualDownloads.map((d) => (
+                            <tr key={d.id} className={d.status === "failed" ? styles.rowFailed : ""}>
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  className={styles.checkbox}
+                                  checked={selectedCompleted.has(d.id)}
+                                  onChange={() => toggleSelection(setSelectedCompleted, d.id)}
+                                />
+                              </td>
+                              <td>
+                                <div className={styles.videoCell}>
+                                  {d.thumbnail && (
+                                    <img className={styles.thumb} src={d.thumbnail} alt="" loading="lazy" />
+                                  )}
+                                  <div className={styles.videoCellText}>
+                                    {d.status === "completed" && d.output_path ? (
+                                      <button
+                                        type="button"
+                                        className={styles.videoTitleLink}
+                                        onClick={() => window.open(`/api/downloads/${d.id}/stream`, "_blank")}
+                                        title={`Play ${d.title ?? d.url}`}
+                                      >
+                                        {d.title ?? d.url}
+                                      </button>
+                                    ) : (
+                                      <span className={styles.videoTitle} title={d.title ?? d.url}>
+                                        {d.title ?? d.url}
+                                      </span>
+                                    )}
+                                    {d.status === "failed" && d.error_message && (
+                                      <span className={styles.errorInline}>{d.error_message}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className={styles.metaCell}>{d.vcodec === "none" ? "Audio" : "Video"}</td>
+                              <td className={styles.metaCell}>{formatBytes(d.filesize)}</td>
+                              <td className={styles.metaCell}>{formatDate(d.updated_at)}</td>
+                              <td>
+                                <div className={styles.rowActions}>
+                                  {d.status === "completed" && d.output_path && (
+                                    <>
+                                      <button
+                                        className={styles.iconBtn}
+                                        onClick={() => window.open(`/api/downloads/${d.id}/stream`, "_blank")}
+                                        title="Play in new tab"
+                                      >
+                                        <PlayIcon />
+                                      </button>
+                                      <button
+                                        className={styles.iconBtn}
+                                        onClick={() => handleDownloadFile(d.id, d.title)}
+                                        title="Download file"
+                                      >
+                                        <DownloadIcon />
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    className={styles.iconBtn}
+                                    onClick={() => handleCopyUrl(d.url, "video")}
+                                    title="Copy video URL"
+                                  >
+                                    <CopyIcon />
+                                  </button>
+                                  <button
+                                    className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+                                    onClick={() => handleDelete(d.id)}
+                                    title="Remove"
+                                  >
+                                    <TrashIcon />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           </div>
           )}
@@ -1409,6 +1659,42 @@ export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloa
                   />
                 </label>
               </div>
+
+              {/* ── Quick-tag buttons for subscription ── */}
+              <div className={styles.addSubRow}>
+                <label className={styles.quickTagLabel}>Tag:</label>
+                <div className={styles.quickTagButtons}>
+                  <button
+                    type="button"
+                    className={`${styles.quickTagBtn} ${subCategory === "movie" ? styles.quickTagBtnActive : ""}`}
+                    onClick={() => setSubCategory("movie")}
+                  >
+                    Movie
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.quickTagBtn} ${subCategory === "tv" ? styles.quickTagBtnActive : ""}`}
+                    onClick={() => setSubCategory("tv")}
+                  >
+                    TV
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.quickTagBtn} ${subCategory === "music" ? styles.quickTagBtnActive : ""}`}
+                    onClick={() => setSubCategory("music")}
+                  >
+                    Music
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.quickTagBtn} ${subCategory && !["movie", "tv", "music"].includes(subCategory) ? styles.quickTagBtnActive : ""}`}
+                    onClick={() => setSubCategory("")}
+                  >
+                    Custom
+                  </button>
+                </div>
+              </div>
+
               <div className={styles.addSubRow}>
                 <label className={styles.advancedCheckbox}>
                   <input

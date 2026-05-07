@@ -177,6 +177,82 @@ async def list_downloads(session: AsyncSession = Depends(get_session)) -> list[D
     return [DownloadInfo.model_validate(d) for d in result.scalars()]
 
 
+@router.get("/grouped")
+async def list_grouped_downloads(session: AsyncSession = Depends(get_session)) -> dict:
+    """Return downloads grouped by subscription and manual downloads separately.
+
+    Subscribed downloads are grouped by subscription_id with subscription details.
+    Manual downloads (subscription_id is NULL) are returned in a separate list.
+    """
+    from app.models import Subscription
+
+    # Get all subscriptions to build a lookup map
+    sub_result = await session.execute(select(Subscription))
+    subs_by_id = {s.id: s for s in sub_result.scalars()}
+
+    # Get all downloads, grouped in-memory by subscription_id
+    dl_result = await session.execute(select(Download).order_by(Download.created_at.desc()))
+    downloads = [DownloadInfo.model_validate(d) for d in dl_result.scalars()]
+
+    groups: dict[int, list[DownloadInfo]] = {}
+    manual_downloads: list[DownloadInfo] = []
+
+    for dl in downloads:
+        if dl.subscription_id is not None:
+            if dl.subscription_id not in groups:
+                groups[dl.subscription_id] = []
+            groups[dl.subscription_id].append(dl)
+        else:
+            manual_downloads.append(dl)
+
+    # Build grouped response
+    by_subscription = []
+    for sub_id in sorted(groups.keys(), key=lambda sid: subs_by_id.get(sid, Subscription()).id or 0, reverse=True):
+        sub = subs_by_id.get(sub_id)
+        by_subscription.append({
+            "subscription_id": sub_id,
+            "subscription_title": sub.title if sub else f"Subscription {sub_id}",
+            "download_count": len(groups[sub_id]),
+            "downloads": groups[sub_id],
+        })
+
+    return {
+        "by_subscription": by_subscription,
+        "manual_downloads": manual_downloads,
+    }
+
+
+@router.get("/tags")
+async def list_tags(session: AsyncSession = Depends(get_session)) -> dict:
+    """Return all used tags grouped by category.
+
+    Only returns non-empty tags. Categories without any tagged downloads
+    are omitted from the response.
+    """
+    # Get all completed downloads (only show tags for files that exist)
+    result = await session.execute(
+        select(Download.category, Download.tag).where(
+            Download.status == "completed",
+            Download.tag.isnot(None),
+        )
+    )
+
+    # Group tags by category
+    tags_by_category: dict[str, set[str]] = {}
+    for category, tag in result:
+        if category and tag:
+            if category not in tags_by_category:
+                tags_by_category[category] = set()
+            tags_by_category[category].add(tag)
+
+    # Convert sets to sorted lists
+    return {
+        "tags": {
+            cat: sorted(tags) for cat, tags in tags_by_category.items()
+        }
+    }
+
+
 @router.get("/export")
 async def export_downloads(session: AsyncSession = Depends(get_session)) -> Response:
     """Export all download URLs as newline-separated text."""

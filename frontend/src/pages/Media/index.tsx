@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import MediaCard from "@/components/MediaCard";
-import { listDownloads } from "@/api/downloads";
+import { listDownloads, listTags } from "@/api/downloads";
 import { type DownloadInfo, WS_EVENTS } from "@/ws/events";
 import { getSocket } from "@/ws/socket";
 
@@ -26,6 +26,8 @@ const EMPTY: Record<MediaFilter, { icon: string; text: string }> = {
 export default function Media() {
   const [downloads, setDownloads] = useState<DownloadInfo[]>([]);
   const [filter, setFilter] = useState<MediaFilter>("all");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [tags, setTags] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,6 +35,10 @@ export default function Media() {
       .then((all) => setDownloads(all.filter((d) => d.status === "completed")))
       .catch(console.error)
       .finally(() => setLoading(false));
+
+    listTags()
+      .then((result) => setTags(result.tags))
+      .catch(console.error);
 
     const socket = getSocket();
 
@@ -70,15 +76,31 @@ export default function Media() {
     return FILTER_ALIASES[key].includes(cat);
   };
 
+  const matchesTag = (d: DownloadInfo): boolean => {
+    if (!selectedTag) return true;
+    const tag = (d.tag ?? "").trim();
+    return tag === selectedTag;
+  };
+
   const countFor = (key: MediaFilter) =>
     key === "all"
-      ? downloads.length
-      : downloads.filter((d) => matchesFilter(d, key)).length;
+      ? downloads.filter((d) => matchesTag(d)).length
+      : downloads.filter((d) => matchesFilter(d, key) && matchesTag(d)).length;
 
-  const filtered =
-    filter === "all"
-      ? downloads
-      : downloads.filter((d) => matchesFilter(d, filter));
+  const filtered = downloads.filter((d) => matchesFilter(d, filter) && matchesTag(d));
+
+  // Get tags for current filter
+  const currentTags = filter === "all" ? [] : (() => {
+    // Get tags from all categories that match the current filter
+    const result: Set<string> = new Set();
+    for (const [catName, catTags] of Object.entries(tags)) {
+      const lowerCat = catName.toLowerCase();
+      if (FILTER_ALIASES[filter]?.some(alias => alias === lowerCat)) {
+        catTags?.forEach(t => result.add(t));
+      }
+    }
+    return Array.from(result).sort();
+  })();
 
   return (
     <div className={styles.page}>
@@ -87,13 +109,37 @@ export default function Media() {
           <button
             key={f.key}
             className={`${styles.filterBtn} ${filter === f.key ? styles.filterBtnActive : ""}`}
-            onClick={() => setFilter(f.key)}
+            onClick={() => {
+              setFilter(f.key);
+              setSelectedTag(null);
+            }}
           >
             {f.label}
             <span className={styles.filterCount}>{countFor(f.key)}</span>
           </button>
         ))}
       </div>
+
+      {/* ── Tag filter bar ── */}
+      {currentTags.length > 0 && filter !== "all" && (
+        <div className={styles.tagFilterBar}>
+          <button
+            className={`${styles.tagBtn} ${selectedTag === null ? styles.tagBtnActive : ""}`}
+            onClick={() => setSelectedTag(null)}
+          >
+            All {filter}
+          </button>
+          {currentTags.map((tag) => (
+            <button
+              key={tag}
+              className={`${styles.tagBtn} ${selectedTag === tag ? styles.tagBtnActive : ""}`}
+              onClick={() => setSelectedTag(tag)}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div className={styles.grid}>

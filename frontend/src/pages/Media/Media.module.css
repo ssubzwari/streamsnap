@@ -59,6 +59,52 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Tag filter bar ── */
+
+.tagFilterBar {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: 0 var(--space-2);
+  margin-left: var(--space-4);
+  border-left: 1px solid var(--color-border);
+  padding-left: var(--space-4);
+}
+
+.tagBtn {
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-surface-hi);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  font-family: var(--font-sans);
+  padding: 4px var(--space-3);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.tagBtn:hover {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+}
+
+.tagBtnActive {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.tagBtnActive:hover {
+  opacity: 0.88;
+}
+
 /* ── Poster grid ── */
 
 .grid {

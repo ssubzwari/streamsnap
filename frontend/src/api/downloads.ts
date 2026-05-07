@@ -30,6 +30,24 @@ export async function listDownloads(): Promise<DownloadInfo[]> {
   return apiFetch<DownloadInfo[]>("/downloads");
 }
 
+export async function listGroupedDownloads(): Promise<{
+  by_subscription: Array<{
+    subscription_id: number;
+    subscription_title: string;
+    download_count: number;
+    downloads: DownloadInfo[];
+  }>;
+  manual_downloads: DownloadInfo[];
+}> {
+  return apiFetch("/downloads/grouped");
+}
+
+export async function listTags(): Promise<{
+  tags: Record<string, string[]>;
+}> {
+  return apiFetch("/downloads/tags");
+}
+
 export async function downloadPlaylist(
   url: string,
   format_spec: string,
