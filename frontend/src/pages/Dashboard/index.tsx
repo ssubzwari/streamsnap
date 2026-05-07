@@ -229,7 +229,7 @@ interface DashboardProps {
   totalSpeedReport?: (speed: number, unit: string) => void;
 }
 
-export default function Dashboard({ settingsOpen, onCloseSettings, activeDownloadCount, totalSpeedReport }: DashboardProps) {
+export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings: _onCloseSettings, activeDownloadCount, totalSpeedReport }: DashboardProps) {
   // ── URL / format state ────────────────────────────────────────────────────
   const [url, setUrl] = useState("");
   const [type, setType] = useState("video");
