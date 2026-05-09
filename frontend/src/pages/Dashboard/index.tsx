@@ -663,16 +663,32 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     setImportOpen(false);
   };
 
+  // Clipboard helper with execCommand fallback for when the document lacks focus.
+  const copyText = async (text: string): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = text;
+      el.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+    }
+  };
+
   const handleCopyUrls = () => {
     const allUrls = downloads.map((d) => d.url).join("\n");
-    navigator.clipboard.writeText(allUrls).catch(console.error);
+    copyText(allUrls).catch(console.error);
     setStatusToast(`Copied ${downloads.length} URL(s) to clipboard`);
   };
 
   // Copy a single URL (download row or subscription row) and show feedback.
   const handleCopyUrl = async (target: string, label: string) => {
     try {
-      await navigator.clipboard.writeText(target);
+      await copyText(target);
       setStatusToast(`Copied ${label} URL`);
     } catch (err) {
       console.error(err);

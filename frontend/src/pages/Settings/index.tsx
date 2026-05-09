@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   backupDb,
   deleteDbBackup,
@@ -291,6 +291,7 @@ export default function Settings({ onClose }: Props) {
   };
 
   // ── Database admin ────────────────────────────────────────────────────────
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [schemaVersion, setSchemaVersion] = useState<DbSchemaVersionInfo | null>(null);
   const [dbBackups, setDbBackups] = useState<DbBackupEntry[]>([]);
   const [dbBackupDir, setDbBackupDir] = useState<string>("");
@@ -740,20 +741,22 @@ export default function Settings({ onClose }: Props) {
                     >
                       {dbBusy === "backup" ? "Backing up…" : "Backup now"}
                     </button>
-                    <label
+                    <button
                       className={styles.saveBtn}
-                      style={{ whiteSpace: "nowrap", cursor: dbBusy !== null ? "not-allowed" : "pointer", opacity: dbBusy !== null ? 0.5 : 1 }}
+                      onClick={() => uploadInputRef.current?.click()}
+                      disabled={dbBusy !== null}
+                      style={{ whiteSpace: "nowrap" }}
                       title="Upload a .db backup file from your computer"
                     >
                       {dbBusy === "upload" ? "Uploading…" : "Upload & Restore"}
-                      <input
-                        type="file"
-                        accept=".db"
-                        style={{ display: "none" }}
-                        disabled={dbBusy !== null}
-                        onChange={handleUploadBackup}
-                      />
-                    </label>
+                    </button>
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      accept=".db"
+                      style={{ display: "none" }}
+                      onChange={handleUploadBackup}
+                    />
                     <button
                       className={styles.saveBtn}
                       onClick={handleInitializeDb}
