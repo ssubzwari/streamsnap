@@ -70,7 +70,7 @@ yt-dlp  (YoutubeDL class, not subprocess)
 |---|---|
 | `backend/app/main.py` | FastAPI + socketio app factory, lifespan startup/shutdown |
 | `backend/app/config.py` | Pydantic settings, `.env` loading |
-| `backend/app/db.py` | Async SQLAlchemy engine, session dependency, `init_db()` |
+| `backend/app/db.py` | Async SQLAlchemy engine, session dependency, `init_db()`, `SCHEMA_VERSION`, migration registry |
 | `backend/app/models.py` | ORM: `Download`, `Subscription`, `SeenVideo`, `Notification`, `Setting` |
 | `backend/app/schemas.py` | Pydantic request/response DTOs |
 | `backend/app/events.py` | WebSocket event name constants + payload dataclasses |
@@ -103,7 +103,19 @@ yt-dlp  (YoutubeDL class, not subprocess)
 | `subscriptions` | id, url, title, check_interval_minutes, last_checked_at, format_spec, output_template, is_active |
 | `seen_videos` | id, subscription_id FK, video_id, title, upload_date — UNIQUE(subscription_id, video_id) |
 | `notifications` | id, kind, title, body, payload_json, is_read, created_at |
-| `settings` | key/value store for app-wide yt-dlp defaults |
+| `settings` | key/value store for app-wide yt-dlp defaults + internal `schema_version` key |
+
+## Schema Versioning
+
+`SCHEMA_VERSION` in `backend/app/db.py` is an integer constant. `init_db()` runs at every startup and:
+1. Calls `create_all()` to create any missing tables
+2. Reads `schema_version` from the `settings` table
+3. Bootstraps new DBs (version 0, run all migrations) vs existing pre-versioning DBs (version 1, already migrated)
+4. Runs any pending `_migrate_vN` functions in order, writing the version after each one
+
+**To add a migration:** write `async def _migrate_v2(conn)`, append to `_MIGRATIONS`, set `SCHEMA_VERSION = 2`. The loop handles the rest.
+
+The current schema version is exposed at `GET /api/settings/db/schema-version` and displayed in Settings → Advanced → Database.
 
 ## Subscription Flow
 
@@ -114,9 +126,9 @@ yt-dlp  (YoutubeDL class, not subprocess)
 
 On each APScheduler tick: re-extract flat playlist → set-diff against `seen_videos` → insert new rows → emit `subscription:new_video` + `notification:created` → enqueue downloads.
 
-## Settings UI Tabs (Phase 3)
+## Settings UI Tabs
 
-| Tab | yt-dlp surface |
+| Tab | Surface |
 |---|---|
 | **Format** | format spec field + presets, quality cap (height), prefer codec (vp9/av1/h264), audio codec (opus/aac/m4a), merge container (mp4/mkv/webm), `--prefer-free-formats`, `--format-sort` |
 | **Subtitles** | write subs, sub langs (multi-select), write auto subs, embed subs, convert subs format |
@@ -125,9 +137,18 @@ On each APScheduler tick: re-extract flat playlist → set-diff against `seen_vi
 | **Download** | concurrent fragments, retries, fragment retries, rate limit, socket timeout, continue partial, no-overwrites |
 | **Output** | paths (temp/home), output template with variable reference, restrict filenames |
 | **Auth** | cookies-from-browser selector, username, password (server-side only) |
-| **Advanced** | raw `YoutubeDL` options JSON escape hatch |
+| **Advanced** | schema version display, yt-dlp updater, database admin (backup / download backup / upload & restore / restore / initialize), raw `YoutubeDL` options JSON |
+| **Notifications** | per-event toggles, external channels (SMTP/Slack/Discord/Telegram/Pushover), periodic summary |
 
 Format presets: **Best Quality** (`bestvideo+bestaudio/best`), **1080p mp4**, **720p mp4**, **Audio only m4a**, **Audio only opus**.
+
+## Database Admin (Settings → Advanced)
+
+- **Backup now** — hot SQLite `.backup()` API, safe while downloads run; saved to `./backups` locally
+- **Download backup** — serves any existing backup file to the browser for local download (`GET /api/settings/db/backups/{name}/download`)
+- **Upload & Restore** — upload a `.db` file from the user's machine (`POST /api/settings/db/backups/upload`), then restore it from the list
+- **Restore** — replace the live DB with a server-side backup; disposes engine connections first (Windows file-lock safe)
+- **Initialize DB** — wipe downloads / subscriptions / seen videos / notifications; preserves notification channels and settings
 
 ## Design System
 
