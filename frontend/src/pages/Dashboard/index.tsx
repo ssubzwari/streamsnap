@@ -1,16 +1,13 @@
 import { useEffect, useReducer, useState } from "react";
 
 import { SkeletonRow } from "@/components/Skeleton";
-import CategoryPicker, { type CategoryPickerValue } from "@/components/CategoryPicker";
 import {
   createDownload,
   deleteDownload,
   downloadFileUrl,
   downloadPlaylist,
-  listCategories,
   listDownloads,
   listGroupedDownloads,
-  type CategoryTree,
 } from "@/api/downloads";
 import { resolveMetadata } from "@/api/metadata";
 import { getSettings, updateSettings } from "@/api/settings";
@@ -239,14 +236,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // ── Category state (shared by Download + Subscribe in this row) ──────────
-  const [categoryValue, setCategoryValue] = useState<CategoryPickerValue>({
-    category: "",
-    subcategory: "",
-    tag: "",
-  });
-  const [categoryTree, setCategoryTree] = useState<CategoryTree | null>(null);
-
   // ── Toast / status banner ────────────────────────────────────────────────
   const [statusToast, setStatusToast] = useState<string | null>(null);
 
@@ -337,7 +326,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   const [subDownloadExisting, setSubDownloadExisting] = useState(false);
   const [subNotify, setSubNotify] = useState(true);
   const [subFormat, setSubFormat] = useState("best");
-  const [subCategory, setSubCategory] = useState("");
   const [subSubmitting, setSubSubmitting] = useState(false);
   const [subError, setSubError] = useState<string | null>(null);
   const [checkingSubId, setCheckingSubId] = useState<number | null>(null);
@@ -375,8 +363,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       })
       .catch(console.error);
 
-    listCategories().then(setCategoryTree).catch(console.error);
-
     // Load subscription metadata for grouping the Completed section
     listGroupedDownloads()
       .then((grouped) => {
@@ -400,12 +386,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     const t = setTimeout(() => setStatusToast(null), 2000);
     return () => clearTimeout(t);
   }, [statusToast]);
-
-  // Refresh the category tree whenever a new download lands so freshly-typed
-  // categories show up as autocomplete options on the next submission.
-  const refreshCategoryTree = () => {
-    listCategories().then(setCategoryTree).catch(console.error);
-  };
 
   // ── WebSocket listeners ───────────────────────────────────────────────────
   useEffect(() => {
@@ -539,12 +519,8 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         title: meta.title,
         thumbnail: meta.thumbnail ?? undefined,
         duration: meta.duration ?? undefined,
-        category: categoryValue.category || null,
-        subcategory: categoryValue.subcategory || null,
-        tag: categoryValue.tag || null,
       });
       setUrl("");
-      refreshCategoryTree();
     } catch (err) {
       let message = String(err);
       try {
@@ -556,15 +532,8 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       if (message === "PLAYLIST_URL") {
         try {
           const formatSpec = buildFormatSpec(type, quality, format, codec);
-          await downloadPlaylist(
-            trimmed,
-            formatSpec,
-            categoryValue.category || null,
-            categoryValue.subcategory || null,
-            categoryValue.tag || null,
-          );
+          await downloadPlaylist(trimmed, formatSpec);
           setUrl("");
-          refreshCategoryTree();
           return;
         } catch (playlistErr) {
           let plMsg = String(playlistErr);
@@ -596,13 +565,9 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         format_spec: buildFormatSpec(type, quality, format, codec),
         download_existing: subDownloadExisting,
         notify: subNotify,
-        category: categoryValue.category || null,
-        subcategory: categoryValue.subcategory || null,
-        tag: categoryValue.tag || null,
       });
       dispatchSubs({ type: "ADD", sub });
       setUrl("");
-      refreshCategoryTree();
     } catch (err) {
       let message = String(err);
       try {
@@ -747,11 +712,9 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         format_spec: subFormat,
         download_existing: subDownloadExisting,
         notify: subNotify,
-        category: subCategory || null,
       });
       dispatchSubs({ type: "ADD", sub });
       setSubUrl("");
-      setSubCategory("");
       setAddSubOpen(false);
     } catch (err) {
       let message = String(err);
@@ -933,49 +896,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               </select>
             </label>
           </div>
-
-          {/* ── Quick-tag buttons ── */}
-          <div className={styles.quickTagRow}>
-            <label className={styles.quickTagLabel}>Quick tag:</label>
-            <div className={styles.quickTagButtons}>
-              <button
-                type="button"
-                className={`${styles.quickTagBtn} ${categoryValue.category === "movie" ? styles.quickTagBtnActive : ""}`}
-                onClick={() => setCategoryValue({ ...categoryValue, category: "movie" })}
-              >
-                Movie
-              </button>
-              <button
-                type="button"
-                className={`${styles.quickTagBtn} ${categoryValue.category === "tv" ? styles.quickTagBtnActive : ""}`}
-                onClick={() => setCategoryValue({ ...categoryValue, category: "tv" })}
-              >
-                TV
-              </button>
-              <button
-                type="button"
-                className={`${styles.quickTagBtn} ${categoryValue.category === "music" ? styles.quickTagBtnActive : ""}`}
-                onClick={() => setCategoryValue({ ...categoryValue, category: "music" })}
-              >
-                Music
-              </button>
-              <button
-                type="button"
-                className={`${styles.quickTagBtn} ${categoryValue.category && !["movie", "tv", "music"].includes(categoryValue.category) ? styles.quickTagBtnActive : ""}`}
-                onClick={() => setCategoryValue({ ...categoryValue, category: "" })}
-              >
-                Custom
-              </button>
-            </div>
-          </div>
-
-          {/* Category / subcategory / tag — applied to both Download and
-              Subscribe submissions in this row. */}
-          <CategoryPicker
-            value={categoryValue}
-            onChange={setCategoryValue}
-            tree={categoryTree}
-          />
 
           {submitError && (
             <p className={styles.errorMsg}>{submitError}</p>
@@ -1659,41 +1579,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                     style={{ width: "100px" }}
                   />
                 </label>
-              </div>
-
-              {/* ── Quick-tag buttons for subscription ── */}
-              <div className={styles.addSubRow}>
-                <label className={styles.quickTagLabel}>Tag:</label>
-                <div className={styles.quickTagButtons}>
-                  <button
-                    type="button"
-                    className={`${styles.quickTagBtn} ${subCategory === "movie" ? styles.quickTagBtnActive : ""}`}
-                    onClick={() => setSubCategory("movie")}
-                  >
-                    Movie
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.quickTagBtn} ${subCategory === "tv" ? styles.quickTagBtnActive : ""}`}
-                    onClick={() => setSubCategory("tv")}
-                  >
-                    TV
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.quickTagBtn} ${subCategory === "music" ? styles.quickTagBtnActive : ""}`}
-                    onClick={() => setSubCategory("music")}
-                  >
-                    Music
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.quickTagBtn} ${subCategory && !["movie", "tv", "music"].includes(subCategory) ? styles.quickTagBtnActive : ""}`}
-                    onClick={() => setSubCategory("")}
-                  >
-                    Custom
-                  </button>
-                </div>
               </div>
 
               <div className={styles.addSubRow}>
