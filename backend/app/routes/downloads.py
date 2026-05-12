@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_session
-from app.models import Download
+from app.models import Download, Subscription
 from app.schemas import DownloadCreateRequest, DownloadInfo
 from app.services.download_manager import download_manager
 from app.services.notifications import create_notification
@@ -25,14 +25,45 @@ async def create_download(
     req: DownloadCreateRequest,
     session: AsyncSession = Depends(get_session),
 ) -> DownloadInfo:
-    # Resolve the destination folder from category/subcategory/tag.
-    # When all three are empty we fall back to settings.DOWNLOAD_DIR.
-    rel = category_subdir(req.category, req.subcategory, req.tag)
-    if rel:
-        download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel)
-        pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
+    # Check if this URL is already subscribed to. If so, link to that subscription.
+    sub_row = await session.execute(
+        select(Subscription).where(Subscription.url == req.url)
+    )
+    subscription = sub_row.scalars().first()
+
+    # Resolve the destination folder. If subscribed, use subscription's settings;
+    # otherwise use provided category/subcategory/tag.
+    rel = None  # Track whether we're using a categorized path (for enqueue)
+    if subscription:
+        # Use subscription's folder and format (unless explicitly overridden)
+        if subscription.download_dir:
+            download_dir = subscription.download_dir
+        else:
+            # Subscription doesn't have a custom dir, use its category structure
+            rel = category_subdir(subscription.category, subscription.subcategory, subscription.tag)
+            if rel:
+                download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel)
+                pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
+            else:
+                download_dir = settings.DOWNLOAD_DIR
+
+        # Use subscription's format if not overridden in request
+        format_spec = req.format_spec or subscription.format_spec or "bestvideo*+bestaudio/best"
+        category = subscription.category
+        subcategory = subscription.subcategory
+        tag = subscription.tag
     else:
-        download_dir = settings.DOWNLOAD_DIR
+        # Manual download without subscription
+        rel = category_subdir(req.category, req.subcategory, req.tag)
+        if rel:
+            download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel)
+            pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
+        else:
+            download_dir = settings.DOWNLOAD_DIR
+        format_spec = req.format_spec
+        category = req.category
+        subcategory = req.subcategory
+        tag = req.tag
 
     # Probe the resolved folder *before* enqueuing. If a file with the same
     # title is already on disk (from a previous run, a manual copy, or a DB
@@ -45,13 +76,14 @@ async def create_download(
         title=req.title,
         thumbnail=req.thumbnail,
         duration=req.duration,
-        format_spec=req.format_spec,
+        format_spec=format_spec,
         status="completed" if existing_path else "queued",
         percent=100.0 if existing_path else 0.0,
         output_path=existing_path,
-        category=req.category,
-        subcategory=req.subcategory,
-        tag=req.tag,
+        subscription_id=subscription.id if subscription else None,
+        category=category,
+        subcategory=subcategory,
+        tag=tag,
     )
     session.add(download)
     await session.commit()
@@ -73,7 +105,7 @@ async def create_download(
         return info
 
     await download_manager.enqueue(
-        download.id, req.url, req.format_spec, download_dir if rel else None
+        download.id, req.url, format_spec, download_dir if rel else None
     )
     return info
 
@@ -91,13 +123,23 @@ async def download_playlist(
     req: PlaylistDownloadRequest,
     session: AsyncSession = Depends(get_session),
 ) -> list[DownloadInfo]:
-    """Extract all videos from a playlist, create a folder, and enqueue downloads."""
+    """Extract all videos from a playlist, create a folder, and enqueue downloads.
+
+    If the playlist URL is already subscribed, link all downloads to that subscription
+    to prevent duplicates and keep them grouped together.
+    """
     from app.ytdl.service import extract_playlist
 
     try:
         playlist_data = await asyncio.to_thread(extract_playlist, req.url)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+
+    # Check if this playlist URL is already subscribed to
+    sub_row = await session.execute(
+        select(Subscription).where(Subscription.url == req.url)
+    )
+    subscription = sub_row.scalars().first()
 
     # Dedupe by video id so a playlist that lists the same video twice
     # doesn't enqueue two downloads writing to the same output path.
@@ -111,15 +153,36 @@ async def download_playlist(
         deduped.append(entry)
     playlist_data["entries"] = deduped
 
-    # Create destination folder. When the user picked a category we use
-    # category/subcategory/tag/<playlist-title>; otherwise just the playlist
-    # title under DOWNLOAD_DIR (legacy behavior).
-    folder_name = safe_folder_name(playlist_data["title"])
-    rel = category_subdir(req.category, req.subcategory, req.tag)
-    if rel:
-        download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel / folder_name)
+    # Determine destination folder and metadata
+    if subscription:
+        # Use subscription's folder and settings
+        if subscription.download_dir:
+            download_dir = subscription.download_dir
+        else:
+            # Subscription doesn't have a custom dir; use its category structure
+            rel = category_subdir(subscription.category, subscription.subcategory, subscription.tag)
+            if rel:
+                folder_name = safe_folder_name(playlist_data["title"])
+                download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel / folder_name)
+            else:
+                download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / safe_folder_name(playlist_data["title"]))
+        format_spec = req.format_spec or subscription.format_spec or "bestvideo*+bestaudio/best"
+        category = subscription.category
+        subcategory = subscription.subcategory
+        tag = subscription.tag
     else:
-        download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
+        # Manual playlist download without subscription
+        folder_name = safe_folder_name(playlist_data["title"])
+        rel = category_subdir(req.category, req.subcategory, req.tag)
+        if rel:
+            download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel / folder_name)
+        else:
+            download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
+        format_spec = req.format_spec
+        category = req.category
+        subcategory = req.subcategory
+        tag = req.tag
+
     pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
 
     results: list[DownloadInfo] = []
@@ -134,13 +197,14 @@ async def download_playlist(
         dl = Download(
             url=entry["url"],
             title=title,
-            format_spec=req.format_spec,
+            format_spec=format_spec,
             status="completed" if existing_path else "queued",
             percent=100.0 if existing_path else 0.0,
             output_path=existing_path,
-            category=req.category,
-            subcategory=req.subcategory,
-            tag=req.tag,
+            subscription_id=subscription.id if subscription else None,
+            category=category,
+            subcategory=subcategory,
+            tag=tag,
         )
         session.add(dl)
         await session.flush()
@@ -152,7 +216,7 @@ async def download_playlist(
             await emit_download_completed(info.model_dump(mode="json"))
             skipped_titles.append(title or entry["url"])
         else:
-            await download_manager.enqueue(dl.id, entry["url"], req.format_spec, download_dir)
+            await download_manager.enqueue(dl.id, entry["url"], format_spec, download_dir)
         results.append(info)
 
     await session.commit()
