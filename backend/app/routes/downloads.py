@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_session
-from app.models import Download, Subscription
+from app.models import Download, Subscription, SeenVideo
 from app.schemas import DownloadCreateRequest, DownloadInfo
 from app.services.download_manager import download_manager
 from app.services.notifications import create_notification
@@ -141,13 +141,22 @@ async def download_playlist(
     )
     subscription = sub_row.scalars().first()
 
+    # If subscribed, load already-seen video IDs to prevent re-downloading
+    seen_video_ids: set[str] = set()
+    if subscription:
+        seen_rows = await session.execute(
+            select(SeenVideo.video_id).where(SeenVideo.subscription_id == subscription.id)
+        )
+        seen_video_ids = set(seen_rows.scalars().all())
+
     # Dedupe by video id so a playlist that lists the same video twice
     # doesn't enqueue two downloads writing to the same output path.
+    # Also skip videos already seen by the subscription.
     _seen: set[str] = set()
     deduped: list[dict] = []
     for entry in playlist_data["entries"]:
         vid = entry.get("id")
-        if not vid or vid in _seen:
+        if not vid or vid in _seen or vid in seen_video_ids:
             continue
         _seen.add(vid)
         deduped.append(entry)
