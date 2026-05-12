@@ -434,9 +434,14 @@ async def initialize_db(session: AsyncSession = Depends(get_session)) -> dict:
 
     # Reclaim primary keys so the next subscription gets id=1 (keeps UI
     # predictable and prevents any lingering id-reuse collisions).
-    await session.execute(
-        text("DELETE FROM sqlite_sequence WHERE name IN ('downloads','subscriptions','seen_videos','notifications')")
-    )
+    # sqlite_sequence only exists if tables use AUTOINCREMENT; safe to ignore if missing.
+    try:
+        await session.execute(
+            text("DELETE FROM sqlite_sequence WHERE name IN ('downloads','subscriptions','seen_videos','notifications')")
+        )
+    except Exception:
+        # sqlite_sequence table may not exist in all scenarios (e.g., fresh DB with no sequences yet)
+        pass
 
     await session.commit()
 
