@@ -29,20 +29,26 @@ COPY backend/app ./app
 COPY --from=frontend-builder /build/frontend/dist ./frontend/dist
 
 # ── yt-dlp isolated install ───────────────────────────────────────────────────
-# Installed into /ytdlp (a dedicated Docker volume mount) so that:
-#   • Updates via Settings → Advanced → "Update to latest" persist across
-#     container restarts without rebuilding the image.
-#   • The /downloads and /data volumes remain separate concerns.
-# On first start the directory is empty; the app falls back to the pip-installed
-# yt-dlp below. Once a user-initiated update writes to /ytdlp it takes priority.
-RUN mkdir -p /ytdlp /downloads /data \
-    && pip install --no-cache-dir --target /ytdlp yt-dlp
+# yt-dlp lives in /ytdlp — a dedicated Docker volume — so that updates via
+# Settings → "Update to latest" persist across container restarts without
+# rebuilding the image, separate from the /downloads and /data volumes.
+#
+# The volume is empty on first run and masks anything baked into /ytdlp at build
+# time, so we stage a copy in /opt/ytdlp-seed and the entrypoint copies it into
+# /ytdlp when the volume has no yt-dlp yet. A user-initiated update overwrites it.
+RUN mkdir -p /opt/ytdlp-seed /ytdlp /downloads /data \
+    && pip install --no-cache-dir --target /opt/ytdlp-seed yt-dlp
+
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Runtime environment
 ENV DOWNLOAD_DIR=/downloads
 ENV DB_URL=sqlite+aiosqlite:////data/metubeplus.db
 ENV YTDLP_DIR=/ytdlp
+ENV YTDLP_SEED_DIR=/opt/ytdlp-seed
 
 EXPOSE 8088
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:socket_app", "--host", "0.0.0.0", "--port", "8088"]

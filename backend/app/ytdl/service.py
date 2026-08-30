@@ -5,9 +5,12 @@ yt-dlp integration — two entry points:
   run_download(...)      — synchronous, runs inside a ProcessPoolExecutor worker
 
 Both are module-level functions so they remain picklable.
-"""
 
-from yt_dlp import YoutubeDL
+NOTE: ``yt_dlp`` is imported lazily inside each function (never at module load)
+so that an in-app "Update to latest" — which reloads yt_dlp via
+``app.ytdl.loader.reload_ytdlp()`` — takes effect on the next call without a
+server restart.
+"""
 
 
 def _quality_label(f: dict) -> str:
@@ -73,6 +76,8 @@ def extract_metadata(url: str) -> dict:
     Returns: {url, title, thumbnail, duration, formats}
     Raises ValueError for playlist URLs (use subscriptions for those).
     """
+    from yt_dlp import YoutubeDL
+
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -100,6 +105,8 @@ def extract_playlist(url: str) -> dict:
     Fetch flat playlist metadata without downloading.
     Returns: {title, entries: [{id, url, title, upload_date}]}
     """
+    from yt_dlp import YoutubeDL
+
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -267,6 +274,8 @@ def run_download(
     Execute the download in a ThreadPoolExecutor worker thread.
     Returns the output file path on success. Raises on failure or cancellation.
     """
+    from yt_dlp import YoutubeDL
+
     from app.ytdl.progress import make_progress_hook
 
     hook = make_progress_hook(download_id, queue, cancel_event)

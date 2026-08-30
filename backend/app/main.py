@@ -8,7 +8,6 @@ wraps the FastAPI ASGI app rather than being mounted on it.
 """
 
 import pathlib
-import sys
 from contextlib import asynccontextmanager
 
 import socketio
@@ -28,12 +27,11 @@ from app.ws import sio
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # If a dedicated yt-dlp directory is configured (Docker volume), prepend it
-    # to sys.path so the package installed there takes priority over the image default.
-    if settings.YTDLP_DIR:
-        ytdlp_path = str(pathlib.Path(settings.YTDLP_DIR).resolve())
-        pathlib.Path(ytdlp_path).mkdir(parents=True, exist_ok=True)
-        if ytdlp_path not in sys.path:
-            sys.path.insert(0, ytdlp_path)
+    # to sys.path so the package installed there takes priority over the image
+    # default. Consumers import yt_dlp lazily so in-app updates reload cleanly.
+    from app.ytdl.loader import ensure_on_path
+
+    ensure_on_path()
 
     # Ensure download directory exists
     pathlib.Path(settings.DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)

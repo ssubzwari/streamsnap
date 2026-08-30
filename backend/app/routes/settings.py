@@ -32,14 +32,26 @@ def _current_version() -> str:
         return "unknown"
 
 
+def _version_key(v: str) -> tuple:
+    return tuple(int(n) for n in re.findall(r"\d+", v)) or (0,)
+
+
 def _installed_version(target_dir: str) -> str:
-    """Read yt-dlp version from dist-info METADATA in *target_dir* (after pip install)."""
+    """Read the yt-dlp version from dist-info METADATA in *target_dir*.
+
+    A ``pip install --target`` can leave several ``yt_dlp-*.dist-info`` dirs
+    behind (it does not uninstall the previous version), so pick the highest.
+    """
     if target_dir:
         pattern = str(pathlib.Path(target_dir) / "yt_dlp-*.dist-info" / "METADATA")
+        found: list[str] = []
         for meta_path in glob.glob(pattern):
             for line in pathlib.Path(meta_path).read_text(encoding="utf-8").splitlines():
                 if line.startswith("Version:"):
-                    return line.split(":", 1)[1].strip()
+                    found.append(line.split(":", 1)[1].strip())
+                    break
+        if found:
+            return max(found, key=_version_key)
     try:
         import importlib.metadata
         return importlib.metadata.version("yt-dlp")
@@ -47,10 +59,34 @@ def _installed_version(target_dir: str) -> str:
         return "unknown"
 
 
+def _clean_target(target_dir: str) -> None:
+    """Wipe a previous yt-dlp install out of *target_dir* before reinstalling.
+
+    Everything in the dir is a pip-installed package except ``db-backups`` (the
+    DB admin backup folder shares this volume), which we preserve. A clean dir
+    means no leftover modules or stale ``.dist-info`` from the prior version.
+    """
+    base = pathlib.Path(target_dir)
+    if not base.is_dir():
+        return
+    for child in base.iterdir():
+        if child.name == "db-backups":
+            continue
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            try:
+                child.unlink()
+            except OSError:
+                pass
+
+
 def _pip_upgrade_cmd(target_dir: str) -> list[str]:
-    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"]
+    cmd = [sys.executable, "-m", "pip", "install", "--no-cache-dir", "yt-dlp"]
     if target_dir:
         cmd += ["--target", target_dir]
+    else:
+        cmd.insert(4, "--upgrade")
     return cmd
 
 
@@ -148,10 +184,19 @@ async def update_settings(
 
 @router.get("/ytdlp-version")
 async def ytdlp_version() -> dict:
-    """Return the currently-loaded yt-dlp version and the configured install dir."""
+    """Return the installed yt-dlp version and the configured install dir.
+
+    When an isolated YTDLP_DIR is configured (Docker volume) the on-disk version
+    there is the source of truth — it reflects the last successful update and
+    survives restarts. The in-process import may still be a previous version
+    until the next download reloads it, so we report the disk version.
+    """
+    target_dir = settings.YTDLP_DIR
+    version = _installed_version(target_dir) if target_dir else _current_version()
     return {
-        "version": _current_version(),
-        "ytdlp_dir": settings.YTDLP_DIR or None,
+        "version": version,
+        "loaded_version": _current_version(),
+        "ytdlp_dir": target_dir or None,
     }
 
 
@@ -165,8 +210,12 @@ async def update_ytdlp() -> dict:
     downloads (new subprocesses pick it up immediately; in-process imports
     reload on next use because run_download runs in a ProcessPoolExecutor).
     """
-    old_version = _current_version()
+    old_version = _installed_version(settings.YTDLP_DIR) if settings.YTDLP_DIR else _current_version()
     target_dir = settings.YTDLP_DIR
+
+    # Fresh install into the isolated dir — no leftovers from the prior version.
+    if target_dir:
+        _clean_target(target_dir)
 
     cmd = _pip_upgrade_cmd(target_dir)
 
@@ -188,7 +237,15 @@ async def update_ytdlp() -> dict:
             detail=f"pip exited with code {proc.returncode}: {stderr.decode()[-1000:]}",
         )
 
-    new_version = _installed_version(target_dir)
+    # Drop cached yt_dlp modules so the next download/metadata call re-imports
+    # the just-installed version without needing a server restart.
+    try:
+        from app.ytdl.loader import reload_ytdlp
+        reload_ytdlp()
+    except Exception:
+        pass
+
+    new_version = _installed_version(target_dir) if target_dir else _current_version()
     return {
         "old_version": old_version,
         "new_version": new_version,

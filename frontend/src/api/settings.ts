@@ -19,6 +19,8 @@ export async function updateSettings(
 
 export interface YtdlpVersionInfo {
   version: string;
+  /** Version currently imported in the server process (may lag `version` until the next download reloads it). */
+  loaded_version?: string;
   ytdlp_dir: string | null;
 }
 
