@@ -7,6 +7,8 @@ export interface SubscriptionCreate {
   format_spec?: string;
   download_existing?: boolean;
   notify?: boolean;
+  /** With download_existing, only fetch these video ids now (others are still marked seen). */
+  download_video_ids?: string[];
 }
 
 export interface SubscriptionUpdate {

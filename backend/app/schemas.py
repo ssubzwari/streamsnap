@@ -81,6 +81,11 @@ class SubscriptionCreate(BaseModel):
     output_template: str | None = None
     download_existing: bool = False
     notify: bool = True
+    # When download_existing is true, restrict the initial backfill downloads
+    # to these video ids. None → download every existing video (default).
+    # Every current video is still recorded in seen_videos regardless, so
+    # removed ones are simply not re-downloaded later as "new".
+    download_video_ids: list[str] | None = None
 
 
 class SubscriptionUpdate(BaseModel):

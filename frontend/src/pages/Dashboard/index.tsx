@@ -262,12 +262,21 @@ export default function Dashboard() {
   const [importText, setImportText] = useState("");
 
   // ── Playlist review modal ────────────────────────────────────────────────
+  // Shown before a playlist download OR before a subscription that backfills
+  // existing videos, so the user can drop entries first.
   const [playlistReview, setPlaylistReview] = useState<{
+    mode: "download" | "subscribe";
     sourceUrl: string;
     title: string;
     entries: PlaylistEntry[];
+    subDraft?: {
+      check_interval_minutes: number;
+      format_spec: string;
+      notify: boolean;
+    };
   } | null>(null);
   const [playlistBusy, setPlaylistBusy] = useState(false);
+  const [playlistError, setPlaylistError] = useState<string | null>(null);
 
   // ── Load initial data + settings ─────────────────────────────────────────
   useEffect(() => {
@@ -420,7 +429,9 @@ export default function Dashboard() {
       if (message === "PLAYLIST_URL") {
         try {
           const preview = await previewPlaylist(trimmed);
+          setPlaylistError(null);
           setPlaylistReview({
+            mode: "download",
             sourceUrl: trimmed,
             title: preview.title,
             entries: preview.entries,
@@ -449,13 +460,31 @@ export default function Dashboard() {
     setIsSubmitting(true);
     setSubmitError(null);
 
+    const draft = {
+      check_interval_minutes: parseInt(subCheckInterval) || 60,
+      format_spec: buildFormatSpec(type, quality, format, codec),
+      notify: subNotify,
+    };
+
     try {
+      // "Download existing" → review the video list before backfilling.
+      if (subDownloadExisting) {
+        const preview = await previewPlaylist(trimmed);
+        setPlaylistError(null);
+        setPlaylistReview({
+          mode: "subscribe",
+          sourceUrl: trimmed,
+          title: preview.title,
+          entries: preview.entries,
+          subDraft: draft,
+        });
+        return;
+      }
+
       const sub = await createSubscription({
         url: trimmed,
-        check_interval_minutes: parseInt(subCheckInterval) || 60,
-        format_spec: buildFormatSpec(type, quality, format, codec),
-        download_existing: subDownloadExisting,
-        notify: subNotify,
+        ...draft,
+        download_existing: false,
       });
       dispatchSubs({ type: "ADD", sub });
       setUrl("");
@@ -585,16 +614,30 @@ export default function Dashboard() {
     );
   };
 
-  const confirmPlaylistDownload = async () => {
-    if (!playlistReview || playlistReview.entries.length === 0) return;
+  const confirmPlaylistReview = async () => {
+    if (!playlistReview) return;
+    if (playlistReview.mode === "download" && playlistReview.entries.length === 0) return;
+
     setPlaylistBusy(true);
+    setPlaylistError(null);
     try {
-      const formatSpec = buildFormatSpec(type, quality, format, codec);
-      await downloadPlaylist(
-        playlistReview.sourceUrl,
-        formatSpec,
-        playlistReview.entries.map((e) => e.url),
-      );
+      if (playlistReview.mode === "download") {
+        const formatSpec = buildFormatSpec(type, quality, format, codec);
+        await downloadPlaylist(
+          playlistReview.sourceUrl,
+          formatSpec,
+          playlistReview.entries.map((e) => e.url),
+        );
+      } else {
+        const sub = await createSubscription({
+          url: playlistReview.sourceUrl,
+          ...playlistReview.subDraft!,
+          download_existing: true,
+          download_video_ids: playlistReview.entries.map((e) => e.id),
+        });
+        dispatchSubs({ type: "ADD", sub });
+        setAddSubOpen(false);
+      }
       setPlaylistReview(null);
       setUrl("");
     } catch (e) {
@@ -603,7 +646,7 @@ export default function Dashboard() {
         const body = JSON.parse(msg.replace(/^ApiError: /, ""));
         if (body?.detail) msg = body.detail;
       } catch {}
-      setSubmitError(msg);
+      setPlaylistError(msg);
     } finally {
       setPlaylistBusy(false);
     }
@@ -625,13 +668,31 @@ export default function Dashboard() {
     setSubSubmitting(true);
     setSubError(null);
 
+    const draft = {
+      check_interval_minutes: parseInt(subInterval) || 60,
+      format_spec: subFormat,
+      notify: subNotify,
+    };
+
     try {
+      if (subDownloadExisting) {
+        const preview = await previewPlaylist(trimmed);
+        setPlaylistError(null);
+        setPlaylistReview({
+          mode: "subscribe",
+          sourceUrl: trimmed,
+          title: preview.title,
+          entries: preview.entries,
+          subDraft: draft,
+        });
+        setSubUrl("");
+        return;
+      }
+
       const sub = await createSubscription({
         url: trimmed,
-        check_interval_minutes: parseInt(subInterval) || 60,
-        format_spec: subFormat,
-        download_existing: subDownloadExisting,
-        notify: subNotify,
+        ...draft,
+        download_existing: false,
       });
       dispatchSubs({ type: "ADD", sub });
       setSubUrl("");
@@ -1514,7 +1575,8 @@ export default function Dashboard() {
                 <p className={styles.plSubtitle}>
                   {playlistReview.entries.length} video
                   {playlistReview.entries.length === 1 ? "" : "s"} — remove any you
-                  don&apos;t want, then download
+                  don&apos;t want, then{" "}
+                  {playlistReview.mode === "subscribe" ? "subscribe" : "download"}
                 </p>
               </div>
               <button
@@ -1530,7 +1592,9 @@ export default function Dashboard() {
             <div className={styles.plList}>
               {playlistReview.entries.length === 0 ? (
                 <p className={styles.plEmpty}>
-                  Every video was removed. Cancel and start over to pick again.
+                  {playlistReview.mode === "subscribe"
+                    ? "No videos left — subscribing will only fetch future uploads."
+                    : "Every video was removed. Cancel and start over to pick again."}
                 </p>
               ) : (
                 playlistReview.entries.map((e, i) => (
@@ -1555,6 +1619,8 @@ export default function Dashboard() {
               )}
             </div>
 
+            {playlistError && <p className={styles.plErrorMsg}>{playlistError}</p>}
+
             <div className={styles.plFooter}>
               <button
                 className={styles.cancelBtn}
@@ -1565,14 +1631,24 @@ export default function Dashboard() {
               </button>
               <button
                 className={styles.downloadBtn}
-                onClick={confirmPlaylistDownload}
-                disabled={playlistBusy || playlistReview.entries.length === 0}
+                onClick={confirmPlaylistReview}
+                disabled={
+                  playlistBusy ||
+                  (playlistReview.mode === "download" &&
+                    playlistReview.entries.length === 0)
+                }
               >
                 {playlistBusy
                   ? "Starting…"
-                  : `Download ${playlistReview.entries.length} video${
-                      playlistReview.entries.length === 1 ? "" : "s"
-                    }`}
+                  : playlistReview.mode === "subscribe"
+                    ? playlistReview.entries.length === 0
+                      ? "Subscribe (future only)"
+                      : `Subscribe & download ${playlistReview.entries.length} video${
+                          playlistReview.entries.length === 1 ? "" : "s"
+                        }`
+                    : `Download ${playlistReview.entries.length} video${
+                        playlistReview.entries.length === 1 ? "" : "s"
+                      }`}
               </button>
             </div>
           </div>

@@ -94,9 +94,14 @@ async def create_subscription(
         )
         session.add(seen)
 
+    selected_ids = (
+        set(req.download_video_ids) if req.download_video_ids is not None else None
+    )
     if req.download_existing:
         from app.ws import emit_download_completed
         for entry in playlist_data["entries"]:
+            if selected_ids is not None and entry["id"] not in selected_ids:
+                continue
             title = entry.get("title")
             # Skip re-downloads when the file already sits in this
             # subscription's folder (e.g. imported manually, or carried over

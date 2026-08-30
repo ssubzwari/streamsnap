@@ -21,7 +21,7 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 ### Subscriptions
 - **Channel/playlist subscriptions** — new videos are downloaded automatically on a configurable interval
 - **Per-playlist folders** — each subscription and playlist download gets its own named subfolder
-- **Backfill control** — choose whether to download existing videos or only future ones on subscribe
+- **Backfill control** — choose whether to download existing videos or only future ones on subscribe; when backfilling, a review list lets you remove individual videos before any download starts (removed ones are still marked seen, so they won't come back as "new")
 - **Per-subscription mute** — bell-icon toggle on each row (and at create time) silences alerts for that subscription while downloads still run
 - **Duplicate protection** — subscribing to a URL you're already subscribed to is rejected up front (no ghost rows); deleting a subscription cascades to its seen-videos and downloads so you can always cleanly re-subscribe
 
