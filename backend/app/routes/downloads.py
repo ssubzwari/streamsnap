@@ -1,6 +1,8 @@
 import asyncio
 import mimetypes
 import pathlib
+import time
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import FileResponse
@@ -11,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db import get_session
 from app.models import Download
-from app.schemas import DownloadCreateRequest, DownloadInfo, MetadataResolveRequest
+from app.schemas import DownloadCreateRequest, DownloadInfo, MetadataResolveRequest, PlaylistEntry
 from app.services.download_manager import download_manager
 from app.services.notifications import create_notification
 from app.utils import find_existing_file, safe_folder_name
@@ -70,18 +72,30 @@ class PlaylistDownloadRequest(BaseModel):
     # When provided, only entries whose URL is in this list are downloaded.
     # Lets the UI show the full playlist and let the user drop videos first.
     urls: list[str] | None = None
-
-
-class PlaylistEntry(BaseModel):
-    id: str
-    url: str
+    # Optional: title + entries already fetched by the client's review step,
+    # so the server doesn't re-extract the (possibly huge) playlist.
     title: str | None = None
-    upload_date: str | None = None
+    entries: list[PlaylistEntry] | None = None
 
 
-class PlaylistPreviewResponse(BaseModel):
-    title: str
-    entries: list[PlaylistEntry]
+class PlaylistPreviewJob(BaseModel):
+    job_id: str
+    status: str  # pending | done | error
+    title: str | None = None
+    entries: list[PlaylistEntry] | None = None
+    error: str | None = None
+
+
+def _dedupe_entries(entries: list[dict]) -> list[dict]:
+    _seen: set[str] = set()
+    out: list[dict] = []
+    for entry in entries:
+        vid = entry.get("id")
+        if not vid or vid in _seen:
+            continue
+        _seen.add(vid)
+        out.append(entry)
+    return out
 
 
 async def _extract_deduped_playlist(url: str) -> dict:
@@ -93,26 +107,61 @@ async def _extract_deduped_playlist(url: str) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    _seen: set[str] = set()
-    deduped: list[dict] = []
-    for entry in playlist_data["entries"]:
-        vid = entry.get("id")
-        if not vid or vid in _seen:
-            continue
-        _seen.add(vid)
-        deduped.append(entry)
-    playlist_data["entries"] = deduped
+    playlist_data["entries"] = _dedupe_entries(playlist_data["entries"])
     return playlist_data
 
 
-@router.post("/playlist/preview", response_model=PlaylistPreviewResponse)
-async def preview_playlist(req: MetadataResolveRequest) -> PlaylistPreviewResponse:
-    """Return every video in a playlist without downloading anything, so the
-    UI can let the user review and remove entries before confirming."""
-    playlist_data = await _extract_deduped_playlist(req.url)
-    return PlaylistPreviewResponse(
-        title=playlist_data["title"],
-        entries=[PlaylistEntry(**e) for e in playlist_data["entries"]],
+# ── Async playlist preview ───────────────────────────────────────────────────
+# Extracting a large channel/playlist can take minutes — longer than a
+# reverse-proxy (Cloudflare) will hold a request open (HTTP 524). So the
+# preview runs as a background job the client polls with short, fast requests.
+
+_PREVIEW_JOBS: dict[str, dict] = {}
+_PREVIEW_TTL_SECONDS = 900
+
+
+def _gc_preview_jobs() -> None:
+    now = time.time()
+    for key in [k for k, v in _PREVIEW_JOBS.items() if now - v["created"] > _PREVIEW_TTL_SECONDS]:
+        _PREVIEW_JOBS.pop(key, None)
+
+
+async def _run_preview_job(job_id: str, url: str) -> None:
+    from app.ytdl.service import extract_playlist
+
+    try:
+        data = await asyncio.to_thread(extract_playlist, url)
+        _PREVIEW_JOBS[job_id].update(
+            status="done",
+            title=data.get("title") or "Playlist",
+            entries=_dedupe_entries(data.get("entries") or []),
+        )
+    except Exception as exc:  # noqa: BLE001 — surface any yt-dlp failure to the client
+        _PREVIEW_JOBS[job_id].update(status="error", error=str(exc))
+
+
+@router.post("/playlist/preview", response_model=PlaylistPreviewJob, status_code=202)
+async def start_playlist_preview(req: MetadataResolveRequest) -> PlaylistPreviewJob:
+    """Kick off a background playlist extraction; poll /playlist/preview/{job_id}."""
+    _gc_preview_jobs()
+    job_id = uuid.uuid4().hex
+    job: dict = {"status": "pending", "created": time.time()}
+    _PREVIEW_JOBS[job_id] = job
+    job["task"] = asyncio.create_task(_run_preview_job(job_id, req.url))
+    return PlaylistPreviewJob(job_id=job_id, status="pending")
+
+
+@router.get("/playlist/preview/{job_id}", response_model=PlaylistPreviewJob)
+async def get_playlist_preview(job_id: str) -> PlaylistPreviewJob:
+    job = _PREVIEW_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Preview job not found or expired")
+    return PlaylistPreviewJob(
+        job_id=job_id,
+        status=job["status"],
+        title=job.get("title"),
+        entries=[PlaylistEntry(**e) for e in job["entries"]] if job.get("entries") else None,
+        error=job.get("error"),
     )
 
 
@@ -121,8 +170,18 @@ async def download_playlist(
     req: PlaylistDownloadRequest,
     session: AsyncSession = Depends(get_session),
 ) -> list[DownloadInfo]:
-    """Extract all videos from a playlist, create a folder, and enqueue downloads."""
-    playlist_data = await _extract_deduped_playlist(req.url)
+    """Create a folder and enqueue downloads for a playlist's videos.
+
+    If the client already fetched the playlist (review step) it passes
+    `title` + `entries` and the server skips re-extraction.
+    """
+    if req.entries is not None and req.title:
+        playlist_data = {
+            "title": req.title,
+            "entries": _dedupe_entries([e.model_dump() for e in req.entries]),
+        }
+    else:
+        playlist_data = await _extract_deduped_playlist(req.url)
 
     # Restrict to the caller's selection, if one was sent.
     if req.urls is not None:

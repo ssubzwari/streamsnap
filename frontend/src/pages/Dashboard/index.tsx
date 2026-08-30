@@ -268,7 +268,8 @@ export default function Dashboard() {
     mode: "download" | "subscribe";
     sourceUrl: string;
     title: string;
-    entries: PlaylistEntry[];
+    entries: PlaylistEntry[]; // working list the user prunes
+    allEntries: PlaylistEntry[]; // full list from preview (subscribe backfill)
     subDraft?: {
       check_interval_minutes: number;
       format_spec: string;
@@ -277,6 +278,7 @@ export default function Dashboard() {
   } | null>(null);
   const [playlistBusy, setPlaylistBusy] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
+  const [playlistLoading, setPlaylistLoading] = useState(false);
 
   // ── Load initial data + settings ─────────────────────────────────────────
   useEffect(() => {
@@ -428,13 +430,15 @@ export default function Dashboard() {
       // entries before anything is enqueued.
       if (message === "PLAYLIST_URL") {
         try {
-          const preview = await previewPlaylist(trimmed);
+          setPlaylistLoading(true);
           setPlaylistError(null);
+          const preview = await previewPlaylist(trimmed);
           setPlaylistReview({
             mode: "download",
             sourceUrl: trimmed,
             title: preview.title,
             entries: preview.entries,
+            allEntries: preview.entries,
           });
           return;
         } catch (playlistErr) {
@@ -445,6 +449,8 @@ export default function Dashboard() {
           } catch {}
           setSubmitError(plMsg);
           return;
+        } finally {
+          setPlaylistLoading(false);
         }
       }
 
@@ -469,13 +475,15 @@ export default function Dashboard() {
     try {
       // "Download existing" → review the video list before backfilling.
       if (subDownloadExisting) {
-        const preview = await previewPlaylist(trimmed);
+        setPlaylistLoading(true);
         setPlaylistError(null);
+        const preview = await previewPlaylist(trimmed);
         setPlaylistReview({
           mode: "subscribe",
           sourceUrl: trimmed,
           title: preview.title,
           entries: preview.entries,
+          allEntries: preview.entries,
           subDraft: draft,
         });
         return;
@@ -497,6 +505,7 @@ export default function Dashboard() {
       setSubmitError(message);
     } finally {
       setIsSubmitting(false);
+      setPlaylistLoading(false);
     }
   };
 
@@ -623,17 +632,18 @@ export default function Dashboard() {
     try {
       if (playlistReview.mode === "download") {
         const formatSpec = buildFormatSpec(type, quality, format, codec);
-        await downloadPlaylist(
-          playlistReview.sourceUrl,
-          formatSpec,
-          playlistReview.entries.map((e) => e.url),
-        );
+        await downloadPlaylist(playlistReview.sourceUrl, formatSpec, {
+          title: playlistReview.title,
+          entries: playlistReview.entries,
+        });
       } else {
         const sub = await createSubscription({
           url: playlistReview.sourceUrl,
           ...playlistReview.subDraft!,
           download_existing: true,
           download_video_ids: playlistReview.entries.map((e) => e.id),
+          playlist_title: playlistReview.title,
+          entries: playlistReview.allEntries,
         });
         dispatchSubs({ type: "ADD", sub });
         setAddSubOpen(false);
@@ -676,13 +686,15 @@ export default function Dashboard() {
 
     try {
       if (subDownloadExisting) {
-        const preview = await previewPlaylist(trimmed);
+        setPlaylistLoading(true);
         setPlaylistError(null);
+        const preview = await previewPlaylist(trimmed);
         setPlaylistReview({
           mode: "subscribe",
           sourceUrl: trimmed,
           title: preview.title,
           entries: preview.entries,
+          allEntries: preview.entries,
           subDraft: draft,
         });
         setSubUrl("");
@@ -706,6 +718,7 @@ export default function Dashboard() {
       setSubError(message);
     } finally {
       setSubSubmitting(false);
+      setPlaylistLoading(false);
     }
   };
 
@@ -894,6 +907,11 @@ export default function Dashboard() {
             </label>
           </div>
 
+          {playlistLoading && (
+            <p className={styles.loadingMsg}>
+              Reading playlist… large channels can take a minute.
+            </p>
+          )}
           {submitError && (
             <p className={styles.errorMsg}>{submitError}</p>
           )}

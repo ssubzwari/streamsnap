@@ -37,11 +37,19 @@ async def create_subscription(
             detail="You're already subscribed to this playlist.",
         )
 
-    # Extract flat playlist (blocking — run in thread)
-    try:
-        playlist_data = await asyncio.to_thread(extract_playlist, req.url)
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+    # Get the flat playlist. Prefer the entries the client already fetched in
+    # its review step — re-extracting a large channel here can exceed the
+    # reverse-proxy timeout (HTTP 524).
+    if req.entries is not None and req.playlist_title:
+        playlist_data = {
+            "title": req.playlist_title,
+            "entries": [e.model_dump() for e in req.entries],
+        }
+    else:
+        try:
+            playlist_data = await asyncio.to_thread(extract_playlist, req.url)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
 
     # Dedupe entries by video id. Some playlists (especially "Latest" /
     # community channel tabs) surface the same video twice, which would

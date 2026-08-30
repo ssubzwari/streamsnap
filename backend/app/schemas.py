@@ -74,6 +74,13 @@ class DownloadProgressEvent(BaseModel):
 
 # ── Subscription schemas ──────────────────────────────────────────────────────
 
+class PlaylistEntry(BaseModel):
+    id: str
+    url: str
+    title: str | None = None
+    upload_date: str | None = None
+
+
 class SubscriptionCreate(BaseModel):
     url: str
     check_interval_minutes: int = 60
@@ -86,6 +93,11 @@ class SubscriptionCreate(BaseModel):
     # Every current video is still recorded in seen_videos regardless, so
     # removed ones are simply not re-downloaded later as "new".
     download_video_ids: list[str] | None = None
+    # Optional: the playlist title + full entry list already fetched by the
+    # client's review step. When provided the server skips re-extracting the
+    # playlist (which can exceed the reverse-proxy timeout for big channels).
+    playlist_title: str | None = None
+    entries: list[PlaylistEntry] | None = None
 
 
 class SubscriptionUpdate(BaseModel):

@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import type { PlaylistEntry } from "./downloads";
 import type { SubscriptionInfo } from "@/ws/events";
 
 export interface SubscriptionCreate {
@@ -9,6 +10,9 @@ export interface SubscriptionCreate {
   notify?: boolean;
   /** With download_existing, only fetch these video ids now (others are still marked seen). */
   download_video_ids?: string[];
+  /** Playlist title + full entry list from the client's review step — lets the server skip re-extraction. */
+  playlist_title?: string;
+  entries?: PlaylistEntry[];
 }
 
 export interface SubscriptionUpdate {

@@ -81,12 +81,17 @@ def extract_metadata(url: str) -> dict:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
+        # Don't resolve every entry when the URL turns out to be a playlist or
+        # channel — we only need to detect that and bail. Without this, a big
+        # channel URL fully extracts every video here (very slow).
+        "extract_flat": "in_playlist",
+        "playlist_items": "1",
     }
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
 
     # Playlist detected — tell the frontend to use the playlist endpoint
-    if info.get("_type") == "playlist" or "entries" in info:
+    if info.get("_type") in ("playlist", "multi_video") or "entries" in info:
         raise ValueError("PLAYLIST_URL")
 
     # Reverse so best quality appears first in the picker

@@ -34,21 +34,50 @@ export interface PlaylistPreview {
   entries: PlaylistEntry[];
 }
 
+interface PlaylistPreviewJob {
+  job_id: string;
+  status: "pending" | "done" | "error";
+  title?: string | null;
+  entries?: PlaylistEntry[] | null;
+  error?: string | null;
+}
+
+/**
+ * Extract a playlist without downloading. Runs as a background job on the
+ * server (large channels can take minutes — longer than a proxy will hold a
+ * request open), polled here until it finishes.
+ */
 export async function previewPlaylist(url: string): Promise<PlaylistPreview> {
-  return apiFetch<PlaylistPreview>("/downloads/playlist/preview", {
-    method: "POST",
-    body: JSON.stringify({ url }),
-  });
+  const started = await apiFetch<PlaylistPreviewJob>(
+    "/downloads/playlist/preview",
+    { method: "POST", body: JSON.stringify({ url }) },
+  );
+  const deadline = Date.now() + 10 * 60 * 1000;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const job = await apiFetch<PlaylistPreviewJob>(
+      `/downloads/playlist/preview/${started.job_id}`,
+    );
+    if (job.status === "done") {
+      return { title: job.title ?? "Playlist", entries: job.entries ?? [] };
+    }
+    if (job.status === "error") {
+      throw new Error(job.error || "Could not read that playlist");
+    }
+    if (Date.now() > deadline) {
+      throw new Error("Playlist is taking too long to read — try again");
+    }
+  }
 }
 
 export async function downloadPlaylist(
   url: string,
   format_spec: string,
-  urls?: string[],
+  extra?: { title?: string; entries?: PlaylistEntry[] },
 ): Promise<DownloadInfo[]> {
   return apiFetch<DownloadInfo[]>("/downloads/playlist", {
     method: "POST",
-    body: JSON.stringify(urls ? { url, format_spec, urls } : { url, format_spec }),
+    body: JSON.stringify({ url, format_spec, ...extra }),
   });
 }
 
