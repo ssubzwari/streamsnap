@@ -2,7 +2,16 @@ import { useEffect, useReducer, useState } from "react";
 
 import Settings from "@/pages/Settings";
 import { SkeletonRow } from "@/components/Skeleton";
-import { createDownload, deleteDownload, downloadPlaylist, listDownloads, openDownload, retryDownload } from "@/api/downloads";
+import {
+  createDownload,
+  deleteDownload,
+  downloadPlaylist,
+  listDownloads,
+  openDownload,
+  type PlaylistEntry,
+  previewPlaylist,
+  retryDownload,
+} from "@/api/downloads";
 import { resolveMetadata } from "@/api/metadata";
 import { getSettings, updateSettings } from "@/api/settings";
 import {
@@ -252,6 +261,14 @@ export default function Dashboard() {
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
 
+  // ── Playlist review modal ────────────────────────────────────────────────
+  const [playlistReview, setPlaylistReview] = useState<{
+    sourceUrl: string;
+    title: string;
+    entries: PlaylistEntry[];
+  } | null>(null);
+  const [playlistBusy, setPlaylistBusy] = useState(false);
+
   // ── Load initial data + settings ─────────────────────────────────────────
   useEffect(() => {
     listDownloads()
@@ -398,12 +415,16 @@ export default function Dashboard() {
         if (body?.detail) message = body.detail;
       } catch {}
 
-      // Playlist detected — download all videos via playlist endpoint
+      // Playlist detected — fetch its videos and let the user review/remove
+      // entries before anything is enqueued.
       if (message === "PLAYLIST_URL") {
         try {
-          const formatSpec = buildFormatSpec(type, quality, format, codec);
-          await downloadPlaylist(trimmed, formatSpec);
-          setUrl("");
+          const preview = await previewPlaylist(trimmed);
+          setPlaylistReview({
+            sourceUrl: trimmed,
+            title: preview.title,
+            entries: preview.entries,
+          });
           return;
         } catch (playlistErr) {
           let plMsg = String(playlistErr);
@@ -555,6 +576,37 @@ export default function Dashboard() {
     }
     setImportText("");
     setImportOpen(false);
+  };
+
+  // ── Handlers: playlist review ────────────────────────────────────────────
+  const removePlaylistEntry = (entryUrl: string) => {
+    setPlaylistReview((prev) =>
+      prev ? { ...prev, entries: prev.entries.filter((e) => e.url !== entryUrl) } : prev,
+    );
+  };
+
+  const confirmPlaylistDownload = async () => {
+    if (!playlistReview || playlistReview.entries.length === 0) return;
+    setPlaylistBusy(true);
+    try {
+      const formatSpec = buildFormatSpec(type, quality, format, codec);
+      await downloadPlaylist(
+        playlistReview.sourceUrl,
+        formatSpec,
+        playlistReview.entries.map((e) => e.url),
+      );
+      setPlaylistReview(null);
+      setUrl("");
+    } catch (e) {
+      let msg = String(e);
+      try {
+        const body = JSON.parse(msg.replace(/^ApiError: /, ""));
+        if (body?.detail) msg = body.detail;
+      } catch {}
+      setSubmitError(msg);
+    } finally {
+      setPlaylistBusy(false);
+    }
   };
 
   const handleCopyUrls = () => {
@@ -1446,6 +1498,86 @@ export default function Dashboard() {
 
       {/* ── Settings modal ── */}
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+
+      {/* ── Playlist review modal ── */}
+      {playlistReview && (
+        <div
+          className={styles.plOverlay}
+          onClick={() => !playlistBusy && setPlaylistReview(null)}
+        >
+          <div className={styles.plModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.plHeader}>
+              <div className={styles.plHeaderText}>
+                <h2 className={styles.plTitle} title={playlistReview.title}>
+                  {playlistReview.title}
+                </h2>
+                <p className={styles.plSubtitle}>
+                  {playlistReview.entries.length} video
+                  {playlistReview.entries.length === 1 ? "" : "s"} — remove any you
+                  don&apos;t want, then download
+                </p>
+              </div>
+              <button
+                className={styles.plClose}
+                onClick={() => setPlaylistReview(null)}
+                disabled={playlistBusy}
+                aria-label="Close"
+              >
+                {"×"}
+              </button>
+            </div>
+
+            <div className={styles.plList}>
+              {playlistReview.entries.length === 0 ? (
+                <p className={styles.plEmpty}>
+                  Every video was removed. Cancel and start over to pick again.
+                </p>
+              ) : (
+                playlistReview.entries.map((e, i) => (
+                  <div className={styles.plRow} key={e.id || e.url}>
+                    <span className={styles.plIndex}>{i + 1}</span>
+                    <span className={styles.plName} title={e.title ?? e.url}>
+                      {e.title ?? e.url}
+                    </span>
+                    {e.upload_date && (
+                      <span className={styles.plDate}>{e.upload_date}</span>
+                    )}
+                    <button
+                      className={styles.plRemove}
+                      onClick={() => removePlaylistEntry(e.url)}
+                      disabled={playlistBusy}
+                      title="Remove from list"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className={styles.plFooter}>
+              <button
+                className={styles.cancelBtn}
+                onClick={() => setPlaylistReview(null)}
+                disabled={playlistBusy}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.downloadBtn}
+                onClick={confirmPlaylistDownload}
+                disabled={playlistBusy || playlistReview.entries.length === 0}
+              >
+                {playlistBusy
+                  ? "Starting…"
+                  : `Download ${playlistReview.entries.length} video${
+                      playlistReview.entries.length === 1 ? "" : "s"
+                    }`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

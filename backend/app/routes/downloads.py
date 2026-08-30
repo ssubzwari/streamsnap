@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db import get_session
 from app.models import Download
-from app.schemas import DownloadCreateRequest, DownloadInfo
+from app.schemas import DownloadCreateRequest, DownloadInfo, MetadataResolveRequest
 from app.services.download_manager import download_manager
 from app.services.notifications import create_notification
 from app.utils import find_existing_file, safe_folder_name
@@ -67,23 +67,32 @@ async def create_download(
 class PlaylistDownloadRequest(BaseModel):
     url: str
     format_spec: str = "bestvideo*+bestaudio/best"
+    # When provided, only entries whose URL is in this list are downloaded.
+    # Lets the UI show the full playlist and let the user drop videos first.
+    urls: list[str] | None = None
 
 
-@router.post("/playlist", response_model=list[DownloadInfo], status_code=201)
-async def download_playlist(
-    req: PlaylistDownloadRequest,
-    session: AsyncSession = Depends(get_session),
-) -> list[DownloadInfo]:
-    """Extract all videos from a playlist, create a folder, and enqueue downloads."""
+class PlaylistEntry(BaseModel):
+    id: str
+    url: str
+    title: str | None = None
+    upload_date: str | None = None
+
+
+class PlaylistPreviewResponse(BaseModel):
+    title: str
+    entries: list[PlaylistEntry]
+
+
+async def _extract_deduped_playlist(url: str) -> dict:
+    """Flat-extract a playlist and drop duplicate video ids."""
     from app.ytdl.service import extract_playlist
 
     try:
-        playlist_data = await asyncio.to_thread(extract_playlist, req.url)
+        playlist_data = await asyncio.to_thread(extract_playlist, url)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    # Dedupe by video id so a playlist that lists the same video twice
-    # doesn't enqueue two downloads writing to the same output path.
     _seen: set[str] = set()
     deduped: list[dict] = []
     for entry in playlist_data["entries"]:
@@ -93,6 +102,34 @@ async def download_playlist(
         _seen.add(vid)
         deduped.append(entry)
     playlist_data["entries"] = deduped
+    return playlist_data
+
+
+@router.post("/playlist/preview", response_model=PlaylistPreviewResponse)
+async def preview_playlist(req: MetadataResolveRequest) -> PlaylistPreviewResponse:
+    """Return every video in a playlist without downloading anything, so the
+    UI can let the user review and remove entries before confirming."""
+    playlist_data = await _extract_deduped_playlist(req.url)
+    return PlaylistPreviewResponse(
+        title=playlist_data["title"],
+        entries=[PlaylistEntry(**e) for e in playlist_data["entries"]],
+    )
+
+
+@router.post("/playlist", response_model=list[DownloadInfo], status_code=201)
+async def download_playlist(
+    req: PlaylistDownloadRequest,
+    session: AsyncSession = Depends(get_session),
+) -> list[DownloadInfo]:
+    """Extract all videos from a playlist, create a folder, and enqueue downloads."""
+    playlist_data = await _extract_deduped_playlist(req.url)
+
+    # Restrict to the caller's selection, if one was sent.
+    if req.urls is not None:
+        keep = set(req.urls)
+        playlist_data["entries"] = [
+            e for e in playlist_data["entries"] if e["url"] in keep
+        ]
 
     # Create per-playlist folder
     folder_name = safe_folder_name(playlist_data["title"])

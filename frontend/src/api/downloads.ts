@@ -22,13 +22,33 @@ export async function listDownloads(): Promise<DownloadInfo[]> {
   return apiFetch<DownloadInfo[]>("/downloads");
 }
 
+export interface PlaylistEntry {
+  id: string;
+  url: string;
+  title: string | null;
+  upload_date: string | null;
+}
+
+export interface PlaylistPreview {
+  title: string;
+  entries: PlaylistEntry[];
+}
+
+export async function previewPlaylist(url: string): Promise<PlaylistPreview> {
+  return apiFetch<PlaylistPreview>("/downloads/playlist/preview", {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+}
+
 export async function downloadPlaylist(
   url: string,
   format_spec: string,
+  urls?: string[],
 ): Promise<DownloadInfo[]> {
   return apiFetch<DownloadInfo[]>("/downloads/playlist", {
     method: "POST",
-    body: JSON.stringify({ url, format_spec }),
+    body: JSON.stringify(urls ? { url, format_spec, urls } : { url, format_spec }),
   });
 }
 
