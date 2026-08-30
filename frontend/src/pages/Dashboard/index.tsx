@@ -2,7 +2,7 @@ import { useEffect, useReducer, useState } from "react";
 
 import Settings from "@/pages/Settings";
 import { SkeletonRow } from "@/components/Skeleton";
-import { createDownload, deleteDownload, downloadPlaylist, listDownloads, openDownload } from "@/api/downloads";
+import { createDownload, deleteDownload, downloadPlaylist, listDownloads, openDownload, retryDownload } from "@/api/downloads";
 import { resolveMetadata } from "@/api/metadata";
 import { getSettings, updateSettings } from "@/api/settings";
 import {
@@ -472,32 +472,56 @@ export default function Dashboard() {
     }
   };
 
+  // If any rows in `candidates` are checked, act on just those; otherwise
+  // act on the whole set ("nothing selected → do everything").
+  const resolveTargets = <T extends { id: number },>(candidates: T[]): T[] => {
+    const picked = candidates.filter((d) => selectedCompleted.has(d.id));
+    return picked.length > 0 ? picked : candidates;
+  };
+
+  const completedOnly = completedDownloads.filter((d) => d.status === "completed");
+  const hasCompletedSelection = completedOnly.some((d) => selectedCompleted.has(d.id));
+  const hasFailedSelection = failedDownloads.some((d) => selectedCompleted.has(d.id));
+
   const handleClearCompleted = async () => {
-    const toDelete = completedDownloads.filter((d) => d.status === "completed");
-    for (const d of toDelete) {
+    for (const d of resolveTargets(completedOnly)) {
       await handleDelete(d.id);
     }
   };
 
   const handleClearFailed = async () => {
-    for (const d of failedDownloads) {
+    for (const d of resolveTargets(failedDownloads)) {
       await handleDelete(d.id);
     }
   };
 
   const handleRetryFailed = async () => {
-    const formatSpec = buildFormatSpec(type, quality, format, codec);
-    for (const d of failedDownloads) {
+    for (const d of resolveTargets(failedDownloads)) {
       try {
-        await handleDelete(d.id);
-        await createDownload({
-          url: d.url,
-          format_spec: formatSpec,
-          title: d.title ?? undefined,
+        const info = await retryDownload(d.id);
+        dispatchDownloads({ type: "UPDATE", patch: info });
+        setSelectedCompleted((prev) => {
+          const n = new Set(prev);
+          n.delete(d.id);
+          return n;
         });
       } catch (e) {
         console.error("Retry failed for", d.url, e);
       }
+    }
+  };
+
+  const handleRetryOne = async (id: number) => {
+    try {
+      const info = await retryDownload(id);
+      dispatchDownloads({ type: "UPDATE", patch: info });
+      setSelectedCompleted((prev) => {
+        const n = new Set(prev);
+        n.delete(id);
+        return n;
+      });
+    } catch (e) {
+      console.error("Retry failed for", id, e);
     }
   };
 
@@ -1050,24 +1074,27 @@ export default function Dashboard() {
             </button>
             <button
               className={styles.ghostBtn}
-              disabled={completedDownloads.filter((d) => d.status === "completed").length === 0}
+              disabled={completedOnly.length === 0}
               onClick={handleClearCompleted}
+              title={hasCompletedSelection ? "Clear the selected completed downloads" : "Clear all completed downloads"}
             >
-              Clear completed
+              {hasCompletedSelection ? "Clear selected completed" : "Clear completed"}
             </button>
             <button
               className={styles.ghostBtn}
               disabled={failedDownloads.length === 0}
               onClick={handleClearFailed}
+              title={hasFailedSelection ? "Clear the selected failed downloads" : "Clear all failed downloads"}
             >
-              Clear failed
+              {hasFailedSelection ? "Clear selected failed" : "Clear failed"}
             </button>
             <button
               className={styles.ghostBtn}
               disabled={failedDownloads.length === 0}
               onClick={handleRetryFailed}
+              title={hasFailedSelection ? "Re-queue the selected failed downloads" : "Re-queue all failed downloads"}
             >
-              Retry failed
+              {hasFailedSelection ? "Retry selected" : "Retry failed"}
             </button>
           </div>
           {selectedCompleted.size > 0 && (
@@ -1186,6 +1213,15 @@ export default function Dashboard() {
                               <FolderOpenIcon />
                             </button>
                           </>
+                        )}
+                        {(d.status === "failed" || d.status === "canceled") && (
+                          <button
+                            className={styles.iconBtn}
+                            onClick={() => handleRetryOne(d.id)}
+                            title="Retry this download"
+                          >
+                            <RefreshIcon />
+                          </button>
                         )}
                         <button
                           className={`${styles.iconBtn} ${styles.iconBtnDanger}`}

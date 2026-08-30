@@ -15,7 +15,7 @@ from app.schemas import DownloadCreateRequest, DownloadInfo
 from app.services.download_manager import download_manager
 from app.services.notifications import create_notification
 from app.utils import find_existing_file, safe_folder_name
-from app.ws import emit_download_added, emit_download_completed
+from app.ws import emit_download_added, emit_download_completed, emit_download_updated
 
 router = APIRouter(prefix="/api/downloads", tags=["downloads"])
 
@@ -295,6 +295,48 @@ async def get_download(
     if not download:
         raise HTTPException(status_code=404, detail="Download not found")
     return DownloadInfo.model_validate(download)
+
+
+@router.post("/{download_id}/retry", response_model=DownloadInfo)
+async def retry_download(
+    download_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> DownloadInfo:
+    """Re-queue a failed or canceled download, reusing its original settings."""
+    import os
+
+    from app.models import Subscription
+
+    download = await session.get(Download, download_id)
+    if not download:
+        raise HTTPException(status_code=404, detail="Download not found")
+    if download.status in ("queued", "downloading"):
+        raise HTTPException(status_code=409, detail="Download is already active")
+
+    # Re-derive the output directory: subscription folder → the folder the
+    # previous attempt targeted → the app default.
+    output_dir: str | None = None
+    if download.subscription_id is not None:
+        sub = await session.get(Subscription, download.subscription_id)
+        if sub is not None:
+            output_dir = sub.download_dir
+    if output_dir is None and download.output_path:
+        output_dir = os.path.dirname(download.output_path) or None
+
+    download.status = "queued"
+    download.percent = 0.0
+    download.error_message = None
+    download.speed = None
+    download.eta = None
+    await session.commit()
+    await session.refresh(download)
+
+    info = DownloadInfo.model_validate(download)
+    await emit_download_updated(info.model_dump(mode="json"))
+
+    format_spec = download.format_spec or "bestvideo*+bestaudio/best"
+    await download_manager.enqueue(download.id, download.url, format_spec, output_dir)
+    return info
 
 
 @router.delete("/{download_id}", status_code=204)

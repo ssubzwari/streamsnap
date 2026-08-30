@@ -39,3 +39,7 @@ export async function openDownload(id: number): Promise<void> {
 export async function deleteDownload(id: number): Promise<void> {
   return apiFetch<void>(`/downloads/${id}`, { method: "DELETE" });
 }
+
+export async function retryDownload(id: number): Promise<DownloadInfo> {
+  return apiFetch<DownloadInfo>(`/downloads/${id}/retry`, { method: "POST" });
+}

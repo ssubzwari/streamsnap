@@ -13,7 +13,7 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 - **Format picker** — Type / Codec / Format / Quality dropdowns with smart fallback format specs
 - **Playlist downloads** — paste a playlist URL and all videos are enqueued into a named subfolder
 - **Real-time progress** — live speed, ETA, and progress bars via WebSocket (Socket.IO)
-- **Bulk actions** — checkboxes on every row; clear selected, clear completed, clear failed, retry failed
+- **Bulk actions** — checkboxes on every row; clear selected, clear completed, clear failed, retry failed. Selection-aware: check some rows to act on just those, or leave everything unchecked to act on the whole set. Retry re-queues in place (keeps the row and its original format/folder) — also available per-row on failed/canceled downloads.
 - **Sort & filter** — newest/oldest sort toggle on the Completed table
 - **Play in browser** — click the ▶ icon to stream the finished file inline in a new tab (HTTP Range → native `<video>` with seek)
 - **Open file** — folder icon reveals the file in the OS file manager (cross-platform: Explorer / Finder / xdg-open)
