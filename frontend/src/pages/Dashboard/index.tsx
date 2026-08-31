@@ -6,6 +6,7 @@ import {
   createDownload,
   deleteDownload,
   downloadPlaylist,
+  getDownloadsStatus,
   listDownloads,
   openDownload,
   type PlaylistEntry,
@@ -26,6 +27,7 @@ import {
   type DownloadCanceledPayload,
   type DownloadFailedPayload,
   type DownloadInfo,
+  type DownloadsPausedPayload,
   type DownloadUpdatedPayload,
   type SubscriptionCheckedPayload,
   type SubscriptionInfo,
@@ -281,6 +283,10 @@ export default function Dashboard() {
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [playlistLoading, setPlaylistLoading] = useState(false);
   const [resumingStalled, setResumingStalled] = useState(false);
+  const [downloadsPaused, setDownloadsPaused] = useState<{
+    paused: boolean;
+    reason: string | null;
+  }>({ paused: false, reason: null });
 
   // ── Load initial data + settings ─────────────────────────────────────────
   useEffect(() => {
@@ -303,6 +309,10 @@ export default function Dashboard() {
         if (settings.option_presets)
           setOptionPresets(settings.option_presets);
       })
+      .catch(console.error);
+
+    getDownloadsStatus()
+      .then((s) => setDownloadsPaused({ paused: s.paused, reason: s.reason }))
       .catch(console.error);
   }, []);
 
@@ -331,6 +341,9 @@ export default function Dashboard() {
         patch: { id: data.id, status: "canceled" },
       });
     });
+    socket.on(WS_EVENTS.DOWNLOADS_PAUSED, (data: DownloadsPausedPayload) => {
+      setDownloadsPaused({ paused: data.paused, reason: data.reason });
+    });
     socket.on(
       WS_EVENTS.SUBSCRIPTION_CHECKED,
       (data: SubscriptionCheckedPayload) => {
@@ -347,6 +360,7 @@ export default function Dashboard() {
       socket.off(WS_EVENTS.DOWNLOAD_COMPLETED);
       socket.off(WS_EVENTS.DOWNLOAD_FAILED);
       socket.off(WS_EVENTS.DOWNLOAD_CANCELED);
+      socket.off(WS_EVENTS.DOWNLOADS_PAUSED);
       socket.off(WS_EVENTS.SUBSCRIPTION_CHECKED);
     };
   }, []);
@@ -575,7 +589,8 @@ export default function Dashboard() {
   const handleResumeStalled = async () => {
     setResumingStalled(true);
     try {
-      await resumeIncompleteDownloads();
+      const res = await resumeIncompleteDownloads();
+      setDownloadsPaused({ paused: res.paused, reason: null });
       const data = await listDownloads();
       dispatchDownloads({ type: "SET", downloads: data });
     } catch (e) {
@@ -814,6 +829,23 @@ export default function Dashboard() {
 
       {/* ── Main content ── */}
       <main className={styles.main}>
+        {downloadsPaused.paused && (
+          <div className={styles.pausedBanner} role="alert">
+            <div className={styles.pausedBannerText}>
+              <strong>Downloads paused.</strong>{" "}
+              {downloadsPaused.reason ??
+                "Resolve the issue, then resume."}
+            </div>
+            <button
+              className={styles.pausedBannerBtn}
+              onClick={handleResumeStalled}
+              disabled={resumingStalled}
+            >
+              {resumingStalled ? "Resuming…" : "Resume downloads"}
+            </button>
+          </div>
+        )}
+
         {/* ── URL input row ── */}
         <div className={styles.inputSection}>
           <div className={styles.inputRow}>

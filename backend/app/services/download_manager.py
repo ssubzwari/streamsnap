@@ -25,8 +25,25 @@ from app.ws import (
     emit_download_completed,
     emit_download_failed,
     emit_download_updated,
+    emit_downloads_paused,
 )
 from app.ytdl.service import run_download
+
+
+# Error substrings that mean "YouTube wants authentication" — not a real
+# per-video failure, and hammering it makes the block worse. When we see one
+# we stop the whole queue and alert the user.
+_BOT_CHECK_MARKERS = (
+    "confirm you’re not a bot",
+    "confirm you're not a bot",
+    "sign in to confirm you",
+    "--cookies-from-browser",
+)
+
+
+def _is_bot_check(message: str) -> bool:
+    m = (message or "").lower()
+    return any(marker in m for marker in _BOT_CHECK_MARKERS)
 
 
 @dataclasses.dataclass
@@ -47,13 +64,73 @@ class DownloadManager:
         self._worker_task: asyncio.Task | None = None
         self._relay_task: asyncio.Task | None = None
 
+        # Pause state. The worker loop blocks on _resume_event while paused.
+        self._paused: bool = False
+        self._pause_reason: str | None = None
+        self._resume_event: asyncio.Event = asyncio.Event()
+        self._resume_event.set()
+        # Downloads we cancelled as part of pause() — their cancellation should
+        # land them back in "queued", not "canceled".
+        self._paused_ids: set[int] = set()
+
     async def start(self) -> None:
         self._executor = ThreadPoolExecutor(
             max_workers=settings.MAX_CONCURRENT_DOWNLOADS,
             thread_name_prefix="ytdl-worker",
         )
+        self._paused = False
+        self._pause_reason = None
+        self._resume_event.set()
         self._worker_task = asyncio.create_task(self._process_queue())
         self._relay_task = asyncio.create_task(self._relay_progress())
+
+    @property
+    def status(self) -> dict:
+        return {
+            "paused": self._paused,
+            "reason": self._pause_reason,
+            "active": len(self._active_futures),
+            "max_concurrent": settings.MAX_CONCURRENT_DOWNLOADS,
+        }
+
+    async def pause(self, reason: str) -> None:
+        """Stop starting new downloads and cancel the ones in flight.
+
+        Cancelled downloads go back to "queued" so a later resume re-runs them
+        (yt-dlp continues from the .part file).
+        """
+        if self._paused:
+            return
+        self._paused = True
+        self._pause_reason = reason
+        self._resume_event.clear()
+
+        # Drop everything still waiting — resume() rebuilds the queue from the
+        # DB (all these rows are still "queued"), so nothing is lost.
+        while not self._job_queue.empty():
+            try:
+                self._job_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+        for did, future in list(self._active_futures.items()):
+            self._paused_ids.add(did)
+            ev = self._cancel_events.get(did)
+            if ev is not None:
+                ev.set()
+            future.cancel()
+
+        await emit_downloads_paused({"paused": True, "reason": reason})
+
+    async def resume(self) -> None:
+        if not self._paused and self._resume_event.is_set():
+            return
+        self._paused = False
+        self._pause_reason = None
+        self._resume_event.set()
+        # _paused_ids is left to drain as the cancelled downloads' final
+        # messages arrive (handled in _relay_progress).
+        await emit_downloads_paused({"paused": False, "reason": None})
 
     async def stop(self) -> None:
         if self._worker_task:
@@ -81,11 +158,15 @@ class DownloadManager:
         restart, so these rows would otherwise sit frozen forever. yt-dlp
         resumes from the partial ``.part`` file (continuedl, on by default),
         so little or no progress is lost. Returns how many were re-enqueued.
+
+        Also lifts a pause — this is the "Resume" action.
         """
         import os
 
-        from sqlalchemy import select
+        from sqlalchemy import and_, or_, select
         from app.models import Download, Subscription
+
+        await self.resume()
 
         SessionLocal = get_sessionmaker()
         jobs: list[tuple[int, str, str, str | None]] = []
@@ -93,7 +174,17 @@ class DownloadManager:
             rows = (
                 await session.execute(
                     select(Download)
-                    .where(Download.status.in_(("queued", "downloading")))
+                    .where(
+                        or_(
+                            Download.status.in_(("queued", "downloading")),
+                            # failures from a YouTube bot check aren't real
+                            # failures — bring them back too.
+                            and_(
+                                Download.status == "failed",
+                                Download.error_message.ilike("%not a bot%"),
+                            ),
+                        )
+                    )
                     .order_by(Download.created_at.asc())
                 )
             ).scalars().all()
@@ -152,7 +243,12 @@ class DownloadManager:
     async def _process_queue(self) -> None:
         loop = asyncio.get_running_loop()
         while True:
+            await self._resume_event.wait()  # block here while paused
             job = await self._job_queue.get()
+            if self._paused:
+                # Pause landed while this job was in flight — drop it; the row
+                # is still "queued" and resume() re-enqueues it from the DB.
+                continue
             cancel_event = threading.Event()
             self._cancel_events[job.download_id] = cancel_event
 
@@ -250,6 +346,31 @@ class DownloadManager:
 
             elif msg_type == "error":
                 error = msg.get("error", "Unknown error")
+
+                # Errored because pause() cancelled it → requeue, don't fail.
+                if did in self._paused_ids:
+                    self._paused_ids.discard(did)
+                    await self._update_db(did, status="queued", speed=None, eta=None)
+                    await emit_download_updated(
+                        {"id": did, "status": "queued", "speed": None, "eta": None}
+                    )
+                    self._cleanup(did)
+                    continue
+
+                # YouTube auth wall — not a real failure. Put the row back to
+                # "queued", pause everything, and alert the user once.
+                if _is_bot_check(error):
+                    await self._update_db(
+                        did, status="queued", speed=None, eta=None, error_message=None
+                    )
+                    await emit_download_updated(
+                        {"id": did, "status": "queued", "speed": None, "eta": None}
+                    )
+                    self._cleanup(did)
+                    if not self._paused:
+                        await self._trigger_bot_check_pause(did)
+                    continue
+
                 await self._update_db(did, status="failed", error_message=error)
                 await emit_download_failed(dataclasses.asdict(DownloadFailedPayload(id=did, error=error)))
                 download = await self._get_download(did)
@@ -258,9 +379,40 @@ class DownloadManager:
                 self._cleanup(did)
 
             elif msg_type == "canceled":
-                await self._update_db(did, status="canceled")
-                await emit_download_canceled(dataclasses.asdict(DownloadCanceledPayload(id=did)))
+                # A cancel that's part of pause() → back to the queue, not "canceled".
+                if did in self._paused_ids:
+                    self._paused_ids.discard(did)
+                    await self._update_db(did, status="queued", speed=None, eta=None)
+                    await emit_download_updated(
+                        {"id": did, "status": "queued", "speed": None, "eta": None}
+                    )
+                else:
+                    await self._update_db(did, status="canceled")
+                    await emit_download_canceled(dataclasses.asdict(DownloadCanceledPayload(id=did)))
                 self._cleanup(did)
+
+    async def _trigger_bot_check_pause(self, download_id: int) -> None:
+        from app.services.notifications import create_notification
+
+        reason = (
+            "YouTube is asking MetubePlus to confirm it's not a bot. "
+            "Add cookies in Settings → Auth, then resume."
+        )
+        await self.pause(reason)
+
+        download = await self._get_download(download_id)
+        what = (download.title or download.url) if download else f"download #{download_id}"
+        await create_notification(
+            kind="auth_required",
+            title="Downloads paused — YouTube sign-in required",
+            body=(
+                "YouTube blocked a download with “Sign in to confirm you’re "
+                "not a bot”, so all downloads have been paused.\n\n"
+                f"First hit: {what}\n\n"
+                "Fix: Settings → Auth → set cookies-from-browser (or upload a "
+                "cookies file), then click Resume downloads."
+            ),
+        )
 
     def _blocking_get(self) -> dict | None:
         try:

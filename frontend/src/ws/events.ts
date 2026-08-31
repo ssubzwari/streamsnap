@@ -45,6 +45,11 @@ export interface DownloadCanceledPayload {
   id: number;
 }
 
+export interface DownloadsPausedPayload {
+  paused: boolean;
+  reason: string | null;
+}
+
 export interface SubscriptionInfo {
   id: number;
   url: string;
@@ -88,6 +93,7 @@ export const WS_EVENTS = {
   DOWNLOAD_COMPLETED: "download:completed",
   DOWNLOAD_FAILED: "download:failed",
   DOWNLOAD_CANCELED: "download:canceled",
+  DOWNLOADS_PAUSED: "downloads:paused",
   SUBSCRIPTION_CHECKED: "subscription:checked",
   SUBSCRIPTION_NEW_VIDEO: "subscription:new_video",
   NOTIFICATION_CREATED: "notification:created",

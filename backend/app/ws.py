@@ -6,6 +6,7 @@ from app.events import (
     DOWNLOAD_COMPLETED,
     DOWNLOAD_FAILED,
     DOWNLOAD_UPDATED,
+    DOWNLOADS_PAUSED,
     NOTIFICATION_CREATED,
     SUBSCRIPTION_CHECKED,
     SUBSCRIPTION_NEW_VIDEO,
@@ -49,6 +50,10 @@ async def emit_download_failed(payload: dict) -> None:
 
 async def emit_download_canceled(payload: dict) -> None:
     await sio.emit(DOWNLOAD_CANCELED, payload)
+
+
+async def emit_downloads_paused(payload: dict) -> None:
+    await sio.emit(DOWNLOADS_PAUSED, payload)
 
 
 # ── Subscription events ───────────────────────────────────────────────────────

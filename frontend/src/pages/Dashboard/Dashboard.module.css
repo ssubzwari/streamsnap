@@ -1136,3 +1136,41 @@
   color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
+
+/* ── Paused banner ───────────────────────────────────────────────────────── */
+
+.pausedBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-warn) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-warn) 12%, transparent);
+}
+
+.pausedBannerText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.pausedBannerBtn {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-warn);
+  color: #1a1a1a;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.pausedBannerBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

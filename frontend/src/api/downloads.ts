@@ -93,8 +93,23 @@ export async function retryDownload(id: number): Promise<DownloadInfo> {
   return apiFetch<DownloadInfo>(`/downloads/${id}/retry`, { method: "POST" });
 }
 
-export async function resumeIncompleteDownloads(): Promise<{ resumed: number }> {
-  return apiFetch<{ resumed: number }>("/downloads/resume-incomplete", {
-    method: "POST",
-  });
+export interface DownloadsStatus {
+  paused: boolean;
+  reason: string | null;
+  active: number;
+  max_concurrent: number;
+}
+
+export async function getDownloadsStatus(): Promise<DownloadsStatus> {
+  return apiFetch<DownloadsStatus>("/downloads/status");
+}
+
+export async function resumeIncompleteDownloads(): Promise<{
+  resumed: number;
+  paused: boolean;
+}> {
+  return apiFetch<{ resumed: number; paused: boolean }>(
+    "/downloads/resume-incomplete",
+    { method: "POST" },
+  );
 }

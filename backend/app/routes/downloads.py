@@ -247,11 +247,17 @@ async def list_downloads(session: AsyncSession = Depends(get_session)) -> list[D
     return [DownloadInfo.model_validate(d) for d in result.scalars()]
 
 
+@router.get("/status")
+async def downloads_status() -> dict:
+    """Queue state — notably whether downloads are paused and why."""
+    return download_manager.status
+
+
 @router.post("/resume-incomplete")
 async def resume_incomplete_downloads() -> dict:
-    """Re-enqueue downloads stuck in queued/downloading (e.g. after a restart)."""
+    """Lift any pause and re-enqueue downloads stuck in queued/downloading."""
     count = await download_manager.resume_incomplete()
-    return {"resumed": count}
+    return {"resumed": count, "paused": download_manager.status["paused"]}
 
 
 @router.get("/export")
