@@ -202,11 +202,14 @@ class DownloadManager:
         """
         from sqlalchemy import and_, or_, select
         from app.models import Download
+        from app.schemas import DownloadInfo
+        from app.utils import find_existing_file
 
         await self.resume()
 
         SessionLocal = get_sessionmaker()
         jobs: list[tuple[int, str, str, str | None]] = []
+        completed_now: list[int] = []
         async with SessionLocal() as session:
             rows = (
                 await session.execute(
@@ -236,6 +239,18 @@ class DownloadManager:
                 if output_dir and d.output_dir != output_dir:
                     d.output_dir = output_dir  # backfill for next time
 
+                # Already on disk (e.g. finished before a crash, or moved into
+                # the folder manually)? Mark it done instead of re-downloading.
+                existing = find_existing_file(output_dir or settings.DOWNLOAD_DIR, d.title)
+                if existing:
+                    d.status = "completed"
+                    d.percent = 100.0
+                    d.output_path = existing
+                    d.speed = None
+                    d.eta = None
+                    completed_now.append(d.id)
+                    continue
+
                 d.status = "queued"
                 d.speed = None
                 d.eta = None
@@ -243,6 +258,13 @@ class DownloadManager:
                     (d.id, d.url, d.format_spec or "bestvideo*+bestaudio/best", output_dir)
                 )
             await session.commit()
+
+            for did in completed_now:
+                dl = await session.get(Download, did)
+                if dl is not None:
+                    await emit_download_completed(
+                        DownloadInfo.model_validate(dl).model_dump(mode="json")
+                    )
 
         for did, url, fmt, out in jobs:
             await emit_download_updated(
