@@ -20,7 +20,9 @@ services:
       - DOWNLOAD_DIR=/downloads
       - DB_URL=sqlite+aiosqlite:////data/metubeplus.db
       - YTDLP_DIR=/ytdlp
-      - MAX_CONCURRENT_DOWNLOADS=${MAX_CONCURRENT_DOWNLOADS:-3}
+      # Concurrent downloads is controlled in-app (Settings → Download,
+      # default 1). This env var is legacy and no longer used.
+      - MAX_CONCURRENT_DOWNLOADS=${MAX_CONCURRENT_DOWNLOADS:-1}
     restart: unless-stopped
 
 volumes:

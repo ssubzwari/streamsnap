@@ -42,7 +42,7 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 - **Subtitles** — write/embed subs, language selection, auto-subs, format conversion
 - **Metadata & Thumbnails** — embed thumbnail, write info JSON, embed chapters and metadata
 - **Post-processing** — SponsorBlock category removal, ffmpeg path, keep-video toggle
-- **Download** — concurrent fragments, retries, rate limit, socket timeout, partial resume
+- **Download** — concurrent downloads (default 1, applied live), concurrent fragments, retries, rate limit, socket timeout, partial resume
 - **Output** — download paths, output template with variable reference, restrict filenames
 - **Auth** — cookies-from-browser, username/password (server-side only)
 - **Advanced** — raw `YoutubeDL` options JSON escape hatch
@@ -214,7 +214,7 @@ yt-dlp  (YoutubeDL class, not subprocess)
 |----------|---------|-------------|
 | `DB_URL` | `sqlite+aiosqlite:///./metubeplus.db` | Database path |
 | `DOWNLOAD_DIR` | `./downloads` | Root download folder |
-| `MAX_CONCURRENT_DOWNLOADS` | `3` | Parallel download workers |
+| `MAX_CONCURRENT_DOWNLOADS` | `1` | Legacy — set "Concurrent Downloads" in Settings → Download instead |
 | `IMAGE_TAG` | `latest` | Docker image tag (compose only) |
 | `PORT` | `8088` | Host port to expose (compose only) |
 

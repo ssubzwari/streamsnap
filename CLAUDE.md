@@ -122,7 +122,7 @@ On each APScheduler tick: re-extract flat playlist → set-diff against `seen_vi
 | **Subtitles** | write subs, sub langs (multi-select), write auto subs, embed subs, convert subs format |
 | **Metadata & Thumbnails** | embed thumbnail, write thumbnail, write info json, write description, embed metadata, embed chapters |
 | **Post-processing** | SponsorBlock remove categories, ffmpeg location, keep-video toggle |
-| **Download** | concurrent fragments, retries, fragment retries, rate limit, socket timeout, continue partial, no-overwrites |
+| **Download** | concurrent downloads (live-applied via `download_manager.set_concurrency`, default 1), concurrent fragments, retries, fragment retries, rate limit, socket timeout, continue partial, no-overwrites |
 | **Output** | paths (temp/home), output template with variable reference, restrict filenames |
 | **Auth** | cookies-from-browser selector, username, password (server-side only) |
 | **Advanced** | raw `YoutubeDL` options JSON escape hatch |

@@ -8,7 +8,9 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     DB_URL: str = "sqlite+aiosqlite:///./metubeplus.db"
     DOWNLOAD_DIR: str = "./downloads"
-    MAX_CONCURRENT_DOWNLOADS: int = 3
+    # Fallback only — the live value comes from the `max_concurrent_downloads`
+    # setting (Settings → Download), which defaults to 1 when unset.
+    MAX_CONCURRENT_DOWNLOADS: int = 1
 
     # Directory where yt-dlp is installed as an isolated Python package.
     # Empty string = use the system/venv-installed yt-dlp (local dev default).

@@ -53,6 +53,7 @@ interface SettingsState {
   ffmpeg_location: string;
   keep_video: string;
   // Download
+  max_concurrent_downloads: string;
   concurrent_fragments: string;
   retries: string;
   fragment_retries: string;
@@ -105,6 +106,7 @@ const DEFAULTS: SettingsState = {
   sponsorblock_remove: "",
   ffmpeg_location: "",
   keep_video: "false",
+  max_concurrent_downloads: "1",
   concurrent_fragments: "1",
   retries: "10",
   fragment_retries: "10",
@@ -567,6 +569,9 @@ export default function Settings({ onClose }: Props) {
             {activeTab === "Download" && (
               <div className={styles.fields}>
                 <Row>
+                  <Field label="Concurrent Downloads" hint="How many videos download at once (1–12)">
+                    <input className={styles.inputSm} type="number" min="1" max="12" value={s.max_concurrent_downloads} onChange={(e) => set("max_concurrent_downloads", e.target.value)} />
+                  </Field>
                   <Field label="Concurrent Fragments" hint="Number of fragments to download in parallel">
                     <input className={styles.inputSm} type="number" min="1" max="16" value={s.concurrent_fragments} onChange={(e) => set("concurrent_fragments", e.target.value)} />
                   </Field>

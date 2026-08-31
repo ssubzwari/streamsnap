@@ -46,6 +46,14 @@ def _is_bot_check(message: str) -> bool:
     return any(marker in m for marker in _BOT_CHECK_MARKERS)
 
 
+# Thread-pool ceiling. Actual parallelism is gated separately by
+# DownloadManager._concurrency (the "max_concurrent_downloads" setting), so this
+# only needs to be a sane upper bound.
+_EXECUTOR_MAX_WORKERS = 16
+_CONCURRENCY_MIN = 1
+_CONCURRENCY_MAX = 12
+
+
 @dataclasses.dataclass
 class _Job:
     download_id: int
@@ -73,16 +81,47 @@ class DownloadManager:
         # land them back in "queued", not "canceled".
         self._paused_ids: set[int] = set()
 
+        # Live concurrency limit (the "max_concurrent_downloads" setting).
+        self._concurrency: int = _CONCURRENCY_MIN
+        self._running: int = 0
+        self._counted_ids: set[int] = set()  # downloads currently holding a slot
+        self._slot_free: asyncio.Event = asyncio.Event()
+        self._slot_free.set()
+
     async def start(self) -> None:
         self._executor = ThreadPoolExecutor(
-            max_workers=settings.MAX_CONCURRENT_DOWNLOADS,
+            max_workers=_EXECUTOR_MAX_WORKERS,
             thread_name_prefix="ytdl-worker",
         )
         self._paused = False
         self._pause_reason = None
         self._resume_event.set()
+        self._running = 0
+        self._counted_ids.clear()
+        self._slot_free.set()
+        self._concurrency = await self._effective_concurrency()
         self._worker_task = asyncio.create_task(self._process_queue())
         self._relay_task = asyncio.create_task(self._relay_progress())
+
+    async def _effective_concurrency(self) -> int:
+        """Read max_concurrent_downloads from settings; default 1 when unset."""
+        from app.models import Setting
+
+        SessionLocal = get_sessionmaker()
+        async with SessionLocal() as session:
+            row = await session.get(Setting, "max_concurrent_downloads")
+        raw = row.value if row and row.value else None
+        try:
+            n = int(raw) if raw is not None else _CONCURRENCY_MIN
+        except (TypeError, ValueError):
+            n = _CONCURRENCY_MIN
+        return max(_CONCURRENCY_MIN, min(_CONCURRENCY_MAX, n))
+
+    async def set_concurrency(self, n: int) -> int:
+        """Change how many downloads run at once, effective immediately."""
+        self._concurrency = max(_CONCURRENCY_MIN, min(_CONCURRENCY_MAX, int(n)))
+        self._slot_free.set()  # wake the worker if we just raised the limit
+        return self._concurrency
 
     @property
     def status(self) -> dict:
@@ -90,7 +129,7 @@ class DownloadManager:
             "paused": self._paused,
             "reason": self._pause_reason,
             "active": len(self._active_futures),
-            "max_concurrent": settings.MAX_CONCURRENT_DOWNLOADS,
+            "max_concurrent": self._concurrency,
         }
 
     async def pause(self, reason: str) -> None:
@@ -244,6 +283,13 @@ class DownloadManager:
         loop = asyncio.get_running_loop()
         while True:
             await self._resume_event.wait()  # block here while paused
+
+            # Wait for a concurrency slot to free up.
+            while self._running >= self._concurrency:
+                self._slot_free.clear()
+                await self._slot_free.wait()
+                await self._resume_event.wait()
+
             job = await self._job_queue.get()
             if self._paused:
                 # Pause landed while this job was in flight — drop it; the row
@@ -257,6 +303,8 @@ class DownloadManager:
 
             app_settings = await self._load_app_settings()
 
+            self._running += 1
+            self._counted_ids.add(job.download_id)
             future: Future = self._executor.submit(
                 run_download,
                 job.download_id,
@@ -423,6 +471,10 @@ class DownloadManager:
     def _cleanup(self, download_id: int) -> None:
         self._active_futures.pop(download_id, None)
         self._cancel_events.pop(download_id, None)
+        if download_id in self._counted_ids:
+            self._counted_ids.discard(download_id)
+            self._running = max(0, self._running - 1)
+            self._slot_free.set()
 
     async def _update_db(self, download_id: int, **kwargs) -> None:
         from datetime import datetime

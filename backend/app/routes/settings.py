@@ -125,6 +125,7 @@ ALLOWED_KEYS = {
     "ffmpeg_location",
     "keep_video",
     # Download
+    "max_concurrent_downloads",
     "concurrent_fragments",
     "retries",
     "fragment_retries",
@@ -176,6 +177,18 @@ async def update_settings(
         else:
             setting.value = value
     await session.commit()
+
+    # Apply concurrency changes to the running queue immediately.
+    if "max_concurrent_downloads" in body.settings:
+        from app.services.download_manager import download_manager
+
+        try:
+            await download_manager.set_concurrency(
+                int(body.settings["max_concurrent_downloads"])
+            )
+        except (TypeError, ValueError):
+            pass
+
     result = await session.execute(select(Setting))
     return SettingsMap(settings={s.key: s.value for s in result.scalars()})
 
