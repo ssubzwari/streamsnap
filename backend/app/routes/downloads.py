@@ -247,6 +247,13 @@ async def list_downloads(session: AsyncSession = Depends(get_session)) -> list[D
     return [DownloadInfo.model_validate(d) for d in result.scalars()]
 
 
+@router.post("/resume-incomplete")
+async def resume_incomplete_downloads() -> dict:
+    """Re-enqueue downloads stuck in queued/downloading (e.g. after a restart)."""
+    count = await download_manager.resume_incomplete()
+    return {"resumed": count}
+
+
 @router.get("/export")
 async def export_downloads(session: AsyncSession = Depends(get_session)) -> Response:
     """Export all download URLs as newline-separated text."""

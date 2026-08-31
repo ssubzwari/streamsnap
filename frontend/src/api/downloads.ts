@@ -92,3 +92,9 @@ export async function deleteDownload(id: number): Promise<void> {
 export async function retryDownload(id: number): Promise<DownloadInfo> {
   return apiFetch<DownloadInfo>(`/downloads/${id}/retry`, { method: "POST" });
 }
+
+export async function resumeIncompleteDownloads(): Promise<{ resumed: number }> {
+  return apiFetch<{ resumed: number }>("/downloads/resume-incomplete", {
+    method: "POST",
+  });
+}

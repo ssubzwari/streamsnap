@@ -42,6 +42,21 @@ async def lifespan(app: FastAPI):
     # Start download manager (thread pool + relay tasks)
     await download_manager.start()
 
+    # Resume downloads that a previous run left mid-flight (queued/downloading).
+    # yt-dlp continues from the partial file, so little progress is lost.
+    try:
+        resumed = await download_manager.resume_incomplete()
+        if resumed:
+            import logging
+
+            logging.getLogger("uvicorn.error").info(
+                "Resumed %d incomplete download(s) after restart", resumed
+            )
+    except Exception:  # never block startup on this
+        import logging
+
+        logging.getLogger("uvicorn.error").exception("Failed to resume incomplete downloads")
+
     # Start APScheduler and register jobs for active subscriptions
     await start_scheduler()
 

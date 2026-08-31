@@ -233,7 +233,10 @@ def _apply_settings(ydl_opts: dict, s: dict) -> None:
     sock_timeout = _int("socket_timeout")
     if sock_timeout is not None:
         ydl_opts["socket_timeout"] = sock_timeout
-    if not _bool("continue_partial"):
+    # yt-dlp resumes from .part files by default; only turn it off when the
+    # user has explicitly unchecked "continue partial". (Resuming is what makes
+    # downloads pick back up after a restart.)
+    if s.get("continue_partial") == "false":
         ydl_opts["continuedl"] = False
     if _bool("no_overwrites"):
         ydl_opts["nooverwrites"] = True

@@ -74,6 +74,59 @@ class DownloadManager:
             _Job(download_id=download_id, url=url, format_spec=format_spec, output_dir=output_dir)
         )
 
+    async def resume_incomplete(self) -> int:
+        """Re-enqueue downloads left as queued/downloading by a restart.
+
+        The in-memory queue and worker futures don't survive a process
+        restart, so these rows would otherwise sit frozen forever. yt-dlp
+        resumes from the partial ``.part`` file (continuedl, on by default),
+        so little or no progress is lost. Returns how many were re-enqueued.
+        """
+        import os
+
+        from sqlalchemy import select
+        from app.models import Download, Subscription
+
+        SessionLocal = get_sessionmaker()
+        jobs: list[tuple[int, str, str, str | None]] = []
+        async with SessionLocal() as session:
+            rows = (
+                await session.execute(
+                    select(Download)
+                    .where(Download.status.in_(("queued", "downloading")))
+                    .order_by(Download.created_at.asc())
+                )
+            ).scalars().all()
+
+            for d in rows:
+                # Skip anything actually running right now (manual re-run while
+                # some downloads are live) — don't double-enqueue it.
+                if d.id in self._active_futures:
+                    continue
+
+                output_dir: str | None = None
+                if d.subscription_id is not None:
+                    sub = await session.get(Subscription, d.subscription_id)
+                    if sub is not None:
+                        output_dir = sub.download_dir
+                if output_dir is None and d.output_path:
+                    output_dir = os.path.dirname(d.output_path) or None
+
+                d.status = "queued"
+                d.speed = None
+                d.eta = None
+                jobs.append(
+                    (d.id, d.url, d.format_spec or "bestvideo*+bestaudio/best", output_dir)
+                )
+            await session.commit()
+
+        for did, url, fmt, out in jobs:
+            await emit_download_updated(
+                {"id": did, "status": "queued", "speed": None, "eta": None}
+            )
+            await self.enqueue(did, url, fmt, out)
+        return len(jobs)
+
     async def cancel(self, download_id: int) -> bool:
         event = self._cancel_events.get(download_id)
         if event is not None:

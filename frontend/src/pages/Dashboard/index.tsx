@@ -10,6 +10,7 @@ import {
   openDownload,
   type PlaylistEntry,
   previewPlaylist,
+  resumeIncompleteDownloads,
   retryDownload,
 } from "@/api/downloads";
 import { resolveMetadata } from "@/api/metadata";
@@ -279,6 +280,7 @@ export default function Dashboard() {
   const [playlistBusy, setPlaylistBusy] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [playlistLoading, setPlaylistLoading] = useState(false);
+  const [resumingStalled, setResumingStalled] = useState(false);
 
   // ── Load initial data + settings ─────────────────────────────────────────
   useEffect(() => {
@@ -567,6 +569,19 @@ export default function Dashboard() {
       } catch (e) {
         console.error("Retry failed for", d.url, e);
       }
+    }
+  };
+
+  const handleResumeStalled = async () => {
+    setResumingStalled(true);
+    try {
+      await resumeIncompleteDownloads();
+      const data = await listDownloads();
+      dispatchDownloads({ type: "SET", downloads: data });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setResumingStalled(false);
     }
   };
 
@@ -1073,8 +1088,13 @@ export default function Dashboard() {
               >
                 Clear selected
               </button>
-              <button className={styles.ghostBtn} disabled>
-                Download Paused
+              <button
+                className={styles.ghostBtn}
+                onClick={handleResumeStalled}
+                disabled={resumingStalled || activeDownloads.length === 0}
+                title="Re-queue downloads that stalled (e.g. after a restart)"
+              >
+                {resumingStalled ? "Resuming…" : "Resume stalled"}
               </button>
             </div>
           </div>
