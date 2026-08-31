@@ -496,6 +496,39 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     "",
   ) ?? "MB/s";
 
+  // ── At-a-glance section summaries (shown in the collapsible headers) ──────
+  const downloadingNow = activeDownloads.filter((d) => d.status === "downloading").length;
+  const queuedNow = activeDownloads.length - downloadingNow;
+  const doneCount = completedDownloadsRaw.filter((d) => d.status === "completed").length;
+  const canceledCount = completedDownloadsRaw.filter((d) => d.status === "canceled").length;
+  const doneBytes = completedDownloadsRaw.reduce(
+    (sum, d) => sum + (d.status === "completed" ? d.filesize ?? 0 : 0),
+    0,
+  );
+  const activeSubCount = subs.filter((s) => s.is_active).length;
+  const pausedSubCount = subs.length - activeSubCount;
+
+  const downloadingSummary = [
+    downloadingNow > 0 ? `${downloadingNow} downloading` : null,
+    queuedNow > 0 ? `${queuedNow} queued` : null,
+    totalSpeed > 0 ? `${totalSpeed.toFixed(1)} ${speedUnit}` : null,
+    downloadsPaused.paused ? "paused" : null,
+  ].filter(Boolean).join(" · ") || "nothing in the queue";
+
+  const completedSummary = [
+    doneCount > 0 ? `${doneCount} done` : null,
+    failedDownloads.length > 0 ? `${failedDownloads.length} failed` : null,
+    canceledCount > 0 ? `${canceledCount} canceled` : null,
+    doneBytes > 0 ? formatBytes(doneBytes) : null,
+  ].filter(Boolean).join(" · ") || "nothing yet";
+
+  const subscriptionsSummary = subs.length === 0
+    ? "none yet"
+    : [
+        activeSubCount > 0 ? `${activeSubCount} active` : null,
+        pausedSubCount > 0 ? `${pausedSubCount} paused` : null,
+      ].filter(Boolean).join(" · ");
+
   // ── Helper: organize completed downloads by subscription ──────────────────────
   const groupedCompleted = (() => {
     const subGroups: Map<number, DownloadInfo[]> = new Map();
@@ -1273,6 +1306,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               {activeDownloads.length > 0 && (
                 <span className={styles.sectionCount}>{activeDownloads.length}</span>
               )}
+              <span className={styles.sectionSummary}>{downloadingSummary}</span>
             </button>
             <div className={styles.sectionActions}>
               <button
@@ -1411,6 +1445,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               {completedDownloads.length > 0 && (
                 <span className={styles.sectionCount}>{completedDownloads.length}</span>
               )}
+              <span className={styles.sectionSummary}>{completedSummary}</span>
             </button>
           </div>
           {openSections.completed && (
@@ -1757,6 +1792,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               {subs.length > 0 && (
                 <span className={styles.sectionCount}>{subs.length}</span>
               )}
+              <span className={styles.sectionSummary}>{subscriptionsSummary}</span>
             </button>
             <div className={styles.sectionActions}>
               <button

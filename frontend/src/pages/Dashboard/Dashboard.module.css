@@ -557,6 +557,12 @@
   color: var(--color-text);
   padding: 0;
   margin: 0;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.sectionToggle .sectionTitle {
+  flex-shrink: 0;
 }
 
 .sectionToggle:hover {
@@ -584,6 +590,19 @@
   border-radius: var(--radius-sm);
   padding: 1px var(--space-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* At-a-glance breakdown next to the section title — most useful when the
+   section is collapsed. */
+.sectionSummary {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .sectionActions {
@@ -1123,6 +1142,11 @@
 @media (max-width: 600px) {
   .header {
     padding: 0 var(--space-3);
+  }
+
+  /* Section headers get cramped on phones — drop the inline breakdown. */
+  .sectionSummary {
+    display: none;
   }
 
   .main {
