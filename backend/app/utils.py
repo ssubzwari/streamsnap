@@ -51,14 +51,61 @@ MEDIA_EXTS: tuple[str, ...] = (
 _NORMALIZE_RE = re.compile(r"[^a-z0-9]+")
 _FCODE_RE = re.compile(r"\.f\d+$")
 
+# Zero-pad a single-digit episode number: "Episode 1" → "Episode 01",
+# "EP 2" → "EP 02", "S01E3" → "S01E03", "Ep_4" → "Ep_04". Episodes 10+ are
+# left alone. Mirrors admin's rename.sh but requires the keyword not to be
+# mid-word (so "Take 5", "Live 8", "The Rise 3" are untouched); a digit
+# before the "E" is allowed for the SxxExx pattern.
+_EPISODE_PAD_RE = re.compile(
+    r"(?<![A-Za-z])(episode|ep|e)([ ._-]*)([1-9])(?![0-9])",
+    re.IGNORECASE,
+)
+_EPISODE_UNPAD_RE = re.compile(
+    r"(?<![A-Za-z])(episode|ep|e)([ ._-]*)0+([1-9][0-9]*)",
+    re.IGNORECASE,
+)
+
+
+def pad_episode_numbers(name: str) -> str:
+    """Zero-pad single-digit episode numbers in a filename or title."""
+    return _EPISODE_PAD_RE.sub(r"\g<1>\g<2>0\g<3>", name)
+
 
 def _normalize_stem(name: str) -> str:
     """Lowercase, strip every non-alphanumeric char. Makes filename matching
     robust to the small differences between yt-dlp's sanitization rules and
-    the title string we carry in the DB (spaces, punctuation, case)."""
+    the title string we carry in the DB (spaces, punctuation, case).
+
+    Episode numbers are un-padded ("Episode 06" → "episode6") so a title of
+    "Episode 6" still matches a file renamed to "Episode 06" on disk."""
     stem = os.path.splitext(name)[0]
     stem = _FCODE_RE.sub("", stem)
+    stem = _EPISODE_UNPAD_RE.sub(r"\g<1>\g<3>", stem)
     return _NORMALIZE_RE.sub("", stem.lower())
+
+
+def pad_episode_files(folder: str) -> list[tuple[str, str]]:
+    """Zero-pad single-digit episode numbers for every file in *folder*.
+
+    Returns the list of (old_name, new_name) pairs that were renamed.
+    Skips a rename when the target already exists.
+    """
+    base = pathlib.Path(folder)
+    if not base.is_dir():
+        return []
+    renamed: list[tuple[str, str]] = []
+    for entry in sorted(base.iterdir()):
+        if not entry.is_file():
+            continue
+        new_name = pad_episode_numbers(entry.name)
+        if new_name == entry.name:
+            continue
+        target = base / new_name
+        if target.exists():
+            continue
+        entry.rename(target)
+        renamed.append((entry.name, new_name))
+    return renamed
 
 
 _YT_HOSTS = ("youtube.com", "youtu.be", "music.youtube.com", "m.youtube.com")

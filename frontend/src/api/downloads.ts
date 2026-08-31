@@ -152,6 +152,13 @@ export async function listCategories(): Promise<CategoryTree> {
   return apiFetch<CategoryTree>("/downloads/categories");
 }
 
+export async function padEpisodeNumbers(): Promise<{
+  renamed: number;
+  changes: { from: string; to: string; dir: string }[];
+}> {
+  return apiFetch("/downloads/pad-episodes", { method: "POST" });
+}
+
 /** Build the URL the browser hits to save the file to disk. The endpoint
  *  serves the file with `Content-Disposition: attachment` so the browser
  *  downloads it instead of streaming inline. */

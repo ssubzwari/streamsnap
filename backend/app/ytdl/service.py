@@ -312,5 +312,49 @@ def run_download(
     # Get the actual output path
     requested = info.get("requested_downloads", [])
     if requested:
-        return requested[0].get("filepath") or requested[0].get("filename", "")
-    return ydl.prepare_filename(info)
+        out_path = requested[0].get("filepath") or requested[0].get("filename", "")
+    else:
+        out_path = ydl.prepare_filename(info)
+
+    # Zero-pad single-digit episode numbers (Episode 1 → Episode 01) on the
+    # final file and any sidecars, mirroring the admin rename.sh logic.
+    s = app_settings or {}
+    if s.get("pad_episode_numbers", "true") != "false" and out_path:
+        out_path = _pad_episode_output(out_path)
+
+    return out_path
+
+
+def _pad_episode_output(path: str) -> str:
+    """Rename the download's file (and sidecars sharing its stem) to zero-pad a
+    single-digit episode number. Returns the new path (or the original)."""
+    import os
+
+    from app.utils import pad_episode_numbers
+
+    folder, fname = os.path.split(path)
+    if not folder or not os.path.isdir(folder):
+        return path
+
+    # The stem yt-dlp used, minus a trailing .f<code>, so sidecars match.
+    import re
+    base_stem = re.sub(r"\.f\d+$", "", os.path.splitext(fname)[0])
+    padded_stem = pad_episode_numbers(base_stem)
+    if padded_stem == base_stem:
+        return path
+
+    new_path = path
+    for entry in os.listdir(folder):
+        if not entry.startswith(base_stem):
+            continue
+        src = os.path.join(folder, entry)
+        dst = os.path.join(folder, padded_stem + entry[len(base_stem):])
+        if src == dst or os.path.exists(dst):
+            continue
+        try:
+            os.rename(src, dst)
+            if os.path.abspath(src) == os.path.abspath(path):
+                new_path = dst
+        except OSError:
+            pass
+    return new_path

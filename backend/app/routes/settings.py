@@ -125,6 +125,7 @@ ALLOWED_KEYS = {
     "sponsorblock_remove",
     "ffmpeg_location",
     "keep_video",
+    "pad_episode_numbers",
     # Download
     "max_concurrent_downloads",
     "concurrent_fragments",

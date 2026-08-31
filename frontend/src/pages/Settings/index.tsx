@@ -26,6 +26,7 @@ import {
   testChannel,
   updateChannel,
 } from "@/api/notifications";
+import { padEpisodeNumbers } from "@/api/downloads";
 import { useTheme } from "@/theme/ThemeContext";
 import { BACKGROUND_OPTIONS } from "@/theme/types";
 import styles from "./Settings.module.css";
@@ -56,6 +57,7 @@ interface SettingsState {
   sponsorblock_remove: string;
   ffmpeg_location: string;
   keep_video: string;
+  pad_episode_numbers: string;
   // Download
   max_concurrent_downloads: string;
   concurrent_fragments: string;
@@ -110,6 +112,7 @@ const DEFAULTS: SettingsState = {
   sponsorblock_remove: "",
   ffmpeg_location: "",
   keep_video: "false",
+  pad_episode_numbers: "true",
   max_concurrent_downloads: "1",
   concurrent_fragments: "1",
   retries: "10",
@@ -218,6 +221,27 @@ export default function Settings({ onClose }: Props) {
   const [ytdlpUpdating, setYtdlpUpdating] = useState(false);
   const [ytdlpResult, setYtdlpResult] = useState<{ updated: boolean; new_version: string } | null>(null);
   const [ytdlpError, setYtdlpError] = useState<string | null>(null);
+
+  // ── Episode-number padding ───────────────────────────────────────────────
+  const [padBusy, setPadBusy] = useState(false);
+  const [padResult, setPadResult] = useState<string | null>(null);
+
+  const handlePadEpisodes = async () => {
+    setPadBusy(true);
+    setPadResult(null);
+    try {
+      const res = await padEpisodeNumbers();
+      setPadResult(
+        res.renamed === 0
+          ? "Nothing to rename — all episode numbers already padded."
+          : `Renamed ${res.renamed} file(s).`,
+      );
+    } catch (e) {
+      setPadResult(e instanceof Error ? e.message : "Rename failed");
+    } finally {
+      setPadBusy(false);
+    }
+  };
 
   useEffect(() => {
     getSettings().then(({ settings }) => {
@@ -588,6 +612,23 @@ export default function Settings({ onClose }: Props) {
                 <Row>
                   <Toggle label="Keep Original Video After Post-processing" checked={bool("keep_video")} onChange={() => toggle("keep_video")} />
                 </Row>
+                <Row>
+                  <Toggle
+                    label="Zero-pad episode numbers (Episode 1 → Episode 01)"
+                    checked={s.pad_episode_numbers !== "false"}
+                    onChange={() => toggle("pad_episode_numbers")}
+                  />
+                </Row>
+                <Field label="Fix existing files" hint={padResult ?? "Apply zero-padding to every file already in the download folders"}>
+                  <button
+                    type="button"
+                    className={styles.saveBtn}
+                    disabled={padBusy}
+                    onClick={handlePadEpisodes}
+                  >
+                    {padBusy ? "Renaming…" : "Fix episode numbers now"}
+                  </button>
+                </Field>
               </div>
             )}
 

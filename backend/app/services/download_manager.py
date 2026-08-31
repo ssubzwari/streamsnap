@@ -356,6 +356,19 @@ class DownloadManager:
                     self._progress_queue.put({"type": "canceled", "id": did, "error": "Canceled"})
                 elif f.exception() is not None:
                     self._progress_queue.put({"type": "error", "id": did, "error": str(f.exception())})
+                else:
+                    # run_download returns the final path (after any episode-number
+                    # rename that happens post-merge). Correct the DB row — the
+                    # progress hook's "finished" fired earlier with the pre-rename
+                    # (and often pre-merge) name.
+                    try:
+                        path = f.result()
+                    except Exception:
+                        path = None
+                    if path:
+                        self._progress_queue.put(
+                            {"type": "path_fixed", "id": did, "output_path": path}
+                        )
                 # "finished" type is already put by the progress hook
 
             future.add_done_callback(_on_done)
@@ -425,6 +438,20 @@ class DownloadManager:
                     )
                     await self._notify_completion(download, success=True)
                 self._cleanup(did)
+
+            elif msg_type == "path_fixed":
+                # run_download reported the final on-disk path (after merge and
+                # any episode-number rename). Update the row if it differs.
+                new_path = msg.get("output_path")
+                existing = await self._get_download(did)
+                if new_path and existing is not None and existing.output_path != new_path:
+                    await self._update_db(did, output_path=new_path)
+                    download = await self._get_download(did)
+                    if download:
+                        from app.schemas import DownloadInfo
+                        await emit_download_updated(
+                            DownloadInfo.model_validate(download).model_dump(mode="json")
+                        )
 
             elif msg_type == "error":
                 error = msg.get("error", "Unknown error")

@@ -369,6 +369,33 @@ async def resume_incomplete_downloads() -> dict:
     return {"resumed": count, "paused": download_manager.status["paused"]}
 
 
+@router.post("/pad-episodes")
+async def pad_episode_numbers_endpoint(session: AsyncSession = Depends(get_session)) -> dict:
+    """Zero-pad single-digit episode numbers across every download folder.
+
+    Walks DOWNLOAD_DIR, applies rename.sh's logic ("Episode 1" → "Episode 01",
+    episodes 10+ untouched), and updates matching download rows' output_path.
+    """
+    import os
+
+    from app.utils import pad_episode_files
+
+    root = settings.DOWNLOAD_DIR
+    renamed: list[dict] = []
+    for folder, _dirs, _files in os.walk(root):
+        for old, new in pad_episode_files(folder):
+            old_abs = os.path.join(folder, old)
+            new_abs = os.path.join(folder, new)
+            renamed.append({"from": old, "to": new, "dir": folder})
+            await session.execute(
+                Download.__table__.update()
+                .where(Download.output_path == old_abs)
+                .values(output_path=new_abs)
+            )
+    await session.commit()
+    return {"renamed": len(renamed), "changes": renamed[:200]}
+
+
 @router.get("/grouped")
 async def list_grouped_downloads(session: AsyncSession = Depends(get_session)) -> dict:
     """Return downloads grouped by subscription and manual downloads separately.
