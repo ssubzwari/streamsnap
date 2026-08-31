@@ -12,11 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import get_session
-from app.models import Download
+from app.models import Download, SeenVideo, Subscription
 from app.schemas import DownloadCreateRequest, DownloadInfo, MetadataResolveRequest, PlaylistEntry
 from app.services.download_manager import download_manager
 from app.services.notifications import create_notification
-from app.utils import find_existing_file, safe_folder_name
+from app.utils import category_subdir, find_existing_file, safe_folder_name
 from app.ws import emit_download_added, emit_download_completed, emit_download_updated
 
 router = APIRouter(prefix="/api/downloads", tags=["downloads"])
@@ -27,21 +27,66 @@ async def create_download(
     req: DownloadCreateRequest,
     session: AsyncSession = Depends(get_session),
 ) -> DownloadInfo:
-    # Probe the download folder *before* enqueuing. If a file with the same
+    # Check if this URL is already subscribed to. If so, link to that subscription.
+    sub_row = await session.execute(
+        select(Subscription).where(Subscription.url == req.url)
+    )
+    subscription = sub_row.scalars().first()
+
+    # Resolve the destination folder. If subscribed, use subscription's settings;
+    # otherwise use provided category/subcategory/tag.
+    rel = None  # Track whether we're using a categorized path (for enqueue)
+    if subscription:
+        # Use subscription's folder and format (unless explicitly overridden)
+        if subscription.download_dir:
+            download_dir = subscription.download_dir
+        else:
+            # Subscription doesn't have a custom dir, use its category structure
+            rel = category_subdir(subscription.category, subscription.subcategory, subscription.tag)
+            if rel:
+                download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel)
+                pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
+            else:
+                download_dir = settings.DOWNLOAD_DIR
+
+        # Use subscription's format if not overridden in request
+        format_spec = req.format_spec or subscription.format_spec or "bestvideo*+bestaudio/best"
+        category = subscription.category
+        subcategory = subscription.subcategory
+        tag = subscription.tag
+    else:
+        # Manual download without subscription
+        rel = category_subdir(req.category, req.subcategory, req.tag)
+        if rel:
+            download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel)
+            pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
+        else:
+            download_dir = settings.DOWNLOAD_DIR
+        format_spec = req.format_spec
+        category = req.category
+        subcategory = req.subcategory
+        tag = req.tag
+
+    # Probe the resolved folder *before* enqueuing. If a file with the same
     # title is already on disk (from a previous run, a manual copy, or a DB
     # wipe that left the files behind), record a completed row pointing at
     # the existing file instead of re-downloading.
-    existing_path = find_existing_file(settings.DOWNLOAD_DIR, req.title)
+    existing_path = find_existing_file(download_dir, req.title)
 
     download = Download(
         url=req.url,
         title=req.title,
         thumbnail=req.thumbnail,
         duration=req.duration,
-        format_spec=req.format_spec,
+        format_spec=format_spec,
         status="completed" if existing_path else "queued",
         percent=100.0 if existing_path else 0.0,
+        output_dir=download_dir,
         output_path=existing_path,
+        subscription_id=subscription.id if subscription else None,
+        category=category,
+        subcategory=subcategory,
+        tag=tag,
     )
     session.add(download)
     await session.commit()
@@ -62,7 +107,7 @@ async def create_download(
         )
         return info
 
-    await download_manager.enqueue(download.id, req.url, req.format_spec)
+    await download_manager.enqueue(download.id, req.url, format_spec, download_dir)
     return info
 
 
@@ -76,6 +121,9 @@ class PlaylistDownloadRequest(BaseModel):
     # so the server doesn't re-extract the (possibly huge) playlist.
     title: str | None = None
     entries: list[PlaylistEntry] | None = None
+    category: str | None = None
+    subcategory: str | None = None
+    tag: str | None = None
 
 
 class PlaylistPreviewJob(BaseModel):
@@ -172,8 +220,10 @@ async def download_playlist(
 ) -> list[DownloadInfo]:
     """Create a folder and enqueue downloads for a playlist's videos.
 
-    If the client already fetched the playlist (review step) it passes
-    `title` + `entries` and the server skips re-extraction.
+    If the URL is already subscribed, downloads are linked to that subscription
+    (grouped, and already-seen videos are skipped). If the client already
+    fetched the playlist (review step) it passes `title` + `entries` and the
+    server skips re-extraction.
     """
     if req.entries is not None and req.title:
         playlist_data = {
@@ -183,16 +233,70 @@ async def download_playlist(
     else:
         playlist_data = await _extract_deduped_playlist(req.url)
 
-    # Restrict to the caller's selection, if one was sent.
+    # Restrict to the caller's selection, if one was sent (review step).
     if req.urls is not None:
         keep = set(req.urls)
         playlist_data["entries"] = [
             e for e in playlist_data["entries"] if e["url"] in keep
         ]
 
-    # Create per-playlist folder
-    folder_name = safe_folder_name(playlist_data["title"])
-    download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
+    # Check if this playlist URL is already subscribed to
+    sub_row = await session.execute(
+        select(Subscription).where(Subscription.url == req.url)
+    )
+    subscription = sub_row.scalars().first()
+
+    # If subscribed, load already-seen video IDs to prevent re-downloading
+    seen_video_ids: set[str] = set()
+    if subscription:
+        seen_rows = await session.execute(
+            select(SeenVideo.video_id).where(SeenVideo.subscription_id == subscription.id)
+        )
+        seen_video_ids = set(seen_rows.scalars().all())
+
+    # Dedupe by video id so a playlist that lists the same video twice
+    # doesn't enqueue two downloads writing to the same output path.
+    # Also skip videos already seen by the subscription.
+    _seen: set[str] = set()
+    deduped: list[dict] = []
+    for entry in playlist_data["entries"]:
+        vid = entry.get("id")
+        if not vid or vid in _seen or vid in seen_video_ids:
+            continue
+        _seen.add(vid)
+        deduped.append(entry)
+    playlist_data["entries"] = deduped
+
+    # Determine destination folder and metadata
+    if subscription:
+        # Use subscription's folder and settings
+        if subscription.download_dir:
+            download_dir = subscription.download_dir
+        else:
+            # Subscription doesn't have a custom dir; use its category structure
+            rel = category_subdir(subscription.category, subscription.subcategory, subscription.tag)
+            if rel:
+                folder_name = safe_folder_name(playlist_data["title"])
+                download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel / folder_name)
+            else:
+                download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / safe_folder_name(playlist_data["title"]))
+        format_spec = req.format_spec or subscription.format_spec or "bestvideo*+bestaudio/best"
+        category = subscription.category
+        subcategory = subscription.subcategory
+        tag = subscription.tag
+    else:
+        # Manual playlist download without subscription
+        folder_name = safe_folder_name(playlist_data["title"])
+        rel = category_subdir(req.category, req.subcategory, req.tag)
+        if rel:
+            download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel / folder_name)
+        else:
+            download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
+        format_spec = req.format_spec
+        category = req.category
+        subcategory = req.subcategory
+        tag = req.tag
+
     pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
 
     results: list[DownloadInfo] = []
@@ -207,11 +311,15 @@ async def download_playlist(
         dl = Download(
             url=entry["url"],
             title=title,
-            format_spec=req.format_spec,
+            format_spec=format_spec,
             status="completed" if existing_path else "queued",
             percent=100.0 if existing_path else 0.0,
             output_dir=download_dir,
             output_path=existing_path,
+            subscription_id=subscription.id if subscription else None,
+            category=category,
+            subcategory=subcategory,
+            tag=tag,
         )
         session.add(dl)
         await session.flush()
@@ -223,7 +331,7 @@ async def download_playlist(
             await emit_download_completed(info.model_dump(mode="json"))
             skipped_titles.append(title or entry["url"])
         else:
-            await download_manager.enqueue(dl.id, entry["url"], req.format_spec, download_dir)
+            await download_manager.enqueue(dl.id, entry["url"], format_spec, download_dir)
         results.append(info)
 
     await session.commit()
@@ -261,6 +369,82 @@ async def resume_incomplete_downloads() -> dict:
     return {"resumed": count, "paused": download_manager.status["paused"]}
 
 
+@router.get("/grouped")
+async def list_grouped_downloads(session: AsyncSession = Depends(get_session)) -> dict:
+    """Return downloads grouped by subscription and manual downloads separately.
+
+    Subscribed downloads are grouped by subscription_id with subscription details.
+    Manual downloads (subscription_id is NULL) are returned in a separate list.
+    """
+    from app.models import Subscription
+
+    # Get all subscriptions to build a lookup map
+    sub_result = await session.execute(select(Subscription))
+    subs_by_id = {s.id: s for s in sub_result.scalars()}
+
+    # Get all downloads, grouped in-memory by subscription_id
+    dl_result = await session.execute(select(Download).order_by(Download.created_at.desc()))
+    downloads = [DownloadInfo.model_validate(d) for d in dl_result.scalars()]
+
+    groups: dict[int, list[DownloadInfo]] = {}
+    manual_downloads: list[DownloadInfo] = []
+
+    for dl in downloads:
+        if dl.subscription_id is not None:
+            if dl.subscription_id not in groups:
+                groups[dl.subscription_id] = []
+            groups[dl.subscription_id].append(dl)
+        else:
+            manual_downloads.append(dl)
+
+    # Build grouped response
+    by_subscription = []
+    for sub_id in sorted(groups.keys(), key=lambda sid: subs_by_id.get(sid, Subscription()).id or 0, reverse=True):
+        sub = subs_by_id.get(sub_id)
+        by_subscription.append({
+            "subscription_id": sub_id,
+            "subscription_title": sub.title if sub else f"Subscription {sub_id}",
+            "download_count": len(groups[sub_id]),
+            "downloads": groups[sub_id],
+        })
+
+    return {
+        "by_subscription": by_subscription,
+        "manual_downloads": manual_downloads,
+    }
+
+
+@router.get("/tags")
+async def list_tags(session: AsyncSession = Depends(get_session)) -> dict:
+    """Return all used tags grouped by category.
+
+    Only returns non-empty tags. Categories without any tagged downloads
+    are omitted from the response.
+    """
+    # Get all completed downloads (only show tags for files that exist)
+    result = await session.execute(
+        select(Download.category, Download.tag).where(
+            Download.status == "completed",
+            Download.tag.isnot(None),
+        )
+    )
+
+    # Group tags by category
+    tags_by_category: dict[str, set[str]] = {}
+    for category, tag in result:
+        if category and tag:
+            if category not in tags_by_category:
+                tags_by_category[category] = set()
+            tags_by_category[category].add(tag)
+
+    # Convert sets to sorted lists
+    return {
+        "tags": {
+            cat: sorted(tags) for cat, tags in tags_by_category.items()
+        }
+    }
+
+
 @router.get("/export")
 async def export_downloads(session: AsyncSession = Depends(get_session)) -> Response:
     """Export all download URLs as newline-separated text."""
@@ -269,6 +453,55 @@ async def export_downloads(session: AsyncSession = Depends(get_session)) -> Resp
     )
     urls = "\n".join(result.scalars())
     return Response(content=urls, media_type="text/plain")
+
+
+# Default seed categories users get even before they've created any download —
+# matches the example structure (TV/Movie/Music/Learning) the user described.
+_DEFAULT_CATEGORIES = ("TV", "Movie", "Music", "Learning")
+
+
+@router.get("/categories")
+async def list_categories(session: AsyncSession = Depends(get_session)) -> dict:
+    """Return the {category: {subcategory: [tags]}} tree built from existing
+    downloads + subscriptions. Used to populate the autocomplete UI.
+
+    Empty levels are pruned. Default seed categories are merged in so the
+    dropdown is never empty for new users.
+    """
+    from app.models import Subscription
+
+    tree: dict[str, dict[str, set[str]]] = {
+        cat: {} for cat in _DEFAULT_CATEGORIES
+    }
+
+    def _add(cat: str | None, sub: str | None, tag: str | None) -> None:
+        if not cat:
+            return
+        cat_node = tree.setdefault(cat, {})
+        if sub:
+            tag_set = cat_node.setdefault(sub, set())
+            if tag:
+                tag_set.add(tag)
+
+    dl_rows = await session.execute(
+        select(Download.category, Download.subcategory, Download.tag)
+    )
+    for cat, sub, tag in dl_rows:
+        _add(cat, sub, tag)
+
+    sub_rows = await session.execute(
+        select(Subscription.category, Subscription.subcategory, Subscription.tag)
+    )
+    for cat, sub, tag in sub_rows:
+        _add(cat, sub, tag)
+
+    # Convert sets → sorted lists for JSON serialization.
+    return {
+        "categories": {
+            cat: {sub: sorted(tags) for sub, tags in subs.items()}
+            for cat, subs in tree.items()
+        }
+    }
 
 
 @router.get("/{download_id}/open")
@@ -362,6 +595,38 @@ def _resolve_output_path(stored: str | None) -> str | None:
         if os.path.isfile(candidate):
             return os.path.abspath(candidate)
     return None
+
+
+@router.get("/{download_id}/file")
+async def download_file(
+    download_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    """Serve the downloaded file as an HTTP attachment so the browser saves
+    it to disk instead of playing it inline. Used by the "Download file"
+    action in the completed-downloads list — replaces the previous
+    "Open in file explorer" affordance, which only worked on the host machine.
+    """
+    import os
+
+    download = await session.get(Download, download_id)
+    if not download:
+        raise HTTPException(status_code=404, detail="Download not found")
+
+    filepath = _resolve_output_path(download.output_path)
+    if not filepath:
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    media_type, _ = mimetypes.guess_type(filepath)
+    if media_type is None:
+        media_type = "application/octet-stream"
+
+    return FileResponse(
+        filepath,
+        media_type=media_type,
+        filename=os.path.basename(filepath),
+        content_disposition_type="attachment",
+    )
 
 
 @router.get("/{download_id}/stream")

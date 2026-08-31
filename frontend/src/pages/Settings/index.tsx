@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   backupDb,
   deleteDbBackup,
+  downloadDbBackup,
+  getDbSchemaVersion,
   getSettings,
   getYtdlpVersion,
   initializeDb,
@@ -9,7 +11,9 @@ import {
   restoreDb,
   updateSettings,
   updateYtdlp,
+  uploadDbBackup,
   type DbBackupEntry,
+  type DbSchemaVersionInfo,
   type YtdlpVersionInfo,
 } from "@/api/settings";
 import {
@@ -289,6 +293,8 @@ export default function Settings({ onClose }: Props) {
   };
 
   // ── Database admin ────────────────────────────────────────────────────────
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [schemaVersion, setSchemaVersion] = useState<DbSchemaVersionInfo | null>(null);
   const [dbBackups, setDbBackups] = useState<DbBackupEntry[]>([]);
   const [dbBackupDir, setDbBackupDir] = useState<string>("");
   const [dbBusy, setDbBusy] = useState<string | null>(null);
@@ -304,7 +310,10 @@ export default function Settings({ onClose }: Props) {
     }
   };
 
-  useEffect(() => { refreshDbBackups(); }, []);
+  useEffect(() => {
+    refreshDbBackups();
+    getDbSchemaVersion().then(setSchemaVersion).catch(console.error);
+  }, []);
 
   const handleBackupDb = async () => {
     setDbBusy("backup");
@@ -368,6 +377,23 @@ export default function Settings({ onClose }: Props) {
       await refreshDbBackups();
     } catch (e) {
       setDbStatus(`✕ ${e instanceof Error ? e.message : "Delete failed"}`);
+    } finally {
+      setDbBusy(null);
+    }
+  };
+
+  const handleUploadBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setDbBusy("upload");
+    setDbStatus(null);
+    try {
+      const res = await uploadDbBackup(file);
+      setDbStatus(`✓ Uploaded ${res.name}`);
+      await refreshDbBackups();
+    } catch (err) {
+      setDbStatus(`✕ ${err instanceof Error ? err.message : "Upload failed"}`);
     } finally {
       setDbBusy(null);
     }
@@ -688,6 +714,21 @@ export default function Settings({ onClose }: Props) {
                 <SectionTitle>Database</SectionTitle>
                 <div className={styles.ytdlpCard}>
                   <div className={styles.ytdlpMeta}>
+                    <span className={styles.ytdlpLabel}>Schema version</span>
+                    <span className={styles.ytdlpVersion}>
+                      {schemaVersion
+                        ? `${schemaVersion.current_version} / ${schemaVersion.target_version}`
+                        : "…"}
+                    </span>
+                    {schemaVersion && !schemaVersion.up_to_date && (
+                      <span style={{ color: "var(--color-warn)", fontSize: "var(--text-xs)" }}>
+                        Migration pending — restart the server to apply
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className={styles.ytdlpCard}>
+                  <div className={styles.ytdlpMeta}>
                     <span className={styles.ytdlpLabel}>Backups directory</span>
                     <span className={styles.ytdlpDir} title={dbBackupDir}>
                       📁 {dbBackupDir || "(not loaded)"}
@@ -705,6 +746,22 @@ export default function Settings({ onClose }: Props) {
                     >
                       {dbBusy === "backup" ? "Backing up…" : "Backup now"}
                     </button>
+                    <button
+                      className={styles.saveBtn}
+                      onClick={() => uploadInputRef.current?.click()}
+                      disabled={dbBusy !== null}
+                      style={{ whiteSpace: "nowrap" }}
+                      title="Upload a .db backup file from your computer"
+                    >
+                      {dbBusy === "upload" ? "Uploading…" : "Upload & Restore"}
+                    </button>
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      accept=".db"
+                      style={{ display: "none" }}
+                      onChange={handleUploadBackup}
+                    />
                     <button
                       className={styles.saveBtn}
                       onClick={handleInitializeDb}
@@ -738,6 +795,14 @@ export default function Settings({ onClose }: Props) {
                           {b.name} · {(b.size / 1024).toFixed(1)} KB · {new Date(b.created_at).toLocaleString()}
                         </span>
                         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                          <button
+                            className={styles.saveBtn}
+                            onClick={() => downloadDbBackup(b.name)}
+                            style={{ padding: "4px 10px", fontSize: "var(--text-xs)" }}
+                            title="Download this backup to your computer"
+                          >
+                            Download
+                          </button>
                           <button
                             className={styles.saveBtn}
                             onClick={() => handleRestoreDb(b.name)}

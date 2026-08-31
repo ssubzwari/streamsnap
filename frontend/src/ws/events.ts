@@ -19,6 +19,9 @@ export interface DownloadInfo {
   output_path: string | null;
   error_message: string | null;
   subscription_id: number | null;
+  category: string | null;
+  subcategory: string | null;
+  tag: string | null;
   ext: string | null;
   filesize: number | null;
   height: number | null;
@@ -62,6 +65,9 @@ export interface SubscriptionInfo {
   download_existing: boolean;
   download_dir?: string | null;
   notify: boolean;
+  category: string | null;
+  subcategory: string | null;
+  tag: string | null;
   created_at: string;
 }
 

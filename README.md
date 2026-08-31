@@ -47,7 +47,8 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 - **Auth** — cookies-from-browser, username/password (server-side only)
 - **Advanced** — raw `YoutubeDL` options JSON escape hatch
 - **yt-dlp updater** — one-click upgrade of the bundled yt-dlp to the latest release (works locally and inside Docker via a dedicated `/ytdlp` volume so the update survives container restarts)
-- **Database admin** — one-click **Backup** (hot SQLite `.backup()` — safe while downloads are running), **Restore** from any prior backup, and **Initialize DB** to wipe downloads / subscriptions / seen videos / notifications while preserving your notification channels and app settings. Backups are written to `/ytdlp/db-backups` in Docker (persistent) or `./backups` locally.
+- **Database admin** — schema version display (current / target), one-click **Backup** (hot SQLite `.backup()` — safe while downloads are running), **Download backup** to save a `.db` file locally, **Upload & Restore** to load a backup from your machine, **Restore** from any server-side backup, and **Initialize DB** to wipe downloads / subscriptions / seen videos / notifications while preserving your notification channels and app settings. Backups are written to `/ytdlp/db-backups` in Docker (persistent) or `./backups` locally.
+- **Schema versioning** — at every startup the app checks the stored schema version against the target version and automatically applies any pending migrations before accepting requests
 
 ### Deployment
 - **Docker** — single-container image with bundled frontend; multi-arch (`amd64` + `arm64`)
@@ -158,7 +159,7 @@ MetubePlus/
 │   ├── src/
 │   │   ├── pages/
 │   │   │   ├── Dashboard/       # Main UI — downloads, subscriptions, format picker
-│   │   │   └── Settings/        # 9-tab settings modal (Format → Notifications)
+│   │   │   └── Settings/        # 10-tab settings modal (Format → Notifications)
 │   │   ├── components/
 │   │   │   ├── Toast/           # In-app toasts + browser Notification API
 │   │   │   └── Skeleton/        # Shimmer loading placeholders

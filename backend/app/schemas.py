@@ -37,6 +37,9 @@ class DownloadCreateRequest(BaseModel):
     title: str | None = None
     thumbnail: str | None = None
     duration: int | None = None
+    category: str | None = None
+    subcategory: str | None = None
+    tag: str | None = None
 
 
 class DownloadInfo(BaseModel):
@@ -55,6 +58,9 @@ class DownloadInfo(BaseModel):
     output_path: str | None = None
     error_message: str | None = None
     subscription_id: int | None = None
+    category: str | None = None
+    subcategory: str | None = None
+    tag: str | None = None
     ext: str | None = None
     filesize: int | None = None
     height: int | None = None
@@ -98,6 +104,9 @@ class SubscriptionCreate(BaseModel):
     # playlist (which can exceed the reverse-proxy timeout for big channels).
     playlist_title: str | None = None
     entries: list[PlaylistEntry] | None = None
+    category: str | None = None
+    subcategory: str | None = None
+    tag: str | None = None
 
 
 class SubscriptionUpdate(BaseModel):
@@ -106,6 +115,9 @@ class SubscriptionUpdate(BaseModel):
     output_template: str | None = None
     is_active: bool | None = None
     notify: bool | None = None
+    category: str | None = None
+    subcategory: str | None = None
+    tag: str | None = None
 
 
 class SubscriptionInfo(BaseModel):
@@ -122,7 +134,20 @@ class SubscriptionInfo(BaseModel):
     download_existing: bool
     download_dir: str | None = None
     notify: bool = True
+    category: str | None = None
+    subcategory: str | None = None
+    tag: str | None = None
     created_at: datetime
+
+
+class CategoryTreeNode(BaseModel):
+    """A single category with its children. Used for autocomplete UI."""
+    name: str
+    subcategories: dict[str, list[str]]  # subcat name → list of tags
+
+
+class CategoryTree(BaseModel):
+    categories: dict[str, dict[str, list[str]]]  # category → subcat → tags
 
 
 # ── Notification schemas ──────────────────────────────────────────────────────

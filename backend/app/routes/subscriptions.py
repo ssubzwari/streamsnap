@@ -10,7 +10,7 @@ from app.db import get_session
 from app.models import SeenVideo, Subscription
 from app.schemas import SubscriptionCreate, SubscriptionInfo, SubscriptionUpdate
 from app.services.subscription_worker import schedule_subscription, unschedule_subscription
-from app.utils import find_existing_file, safe_folder_name
+from app.utils import category_subdir, find_existing_file, safe_folder_name
 
 router = APIRouter(prefix="/api/subscriptions", tags=["subscriptions"])
 
@@ -64,9 +64,14 @@ async def create_subscription(
         deduped_entries.append(entry)
     playlist_data["entries"] = deduped_entries
 
-    # Create per-playlist download folder
+    # Create per-playlist download folder, prefixed with the user's category
+    # path when one was provided.
     folder_name = safe_folder_name(playlist_data["title"])
-    download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
+    rel = category_subdir(req.category, req.subcategory, req.tag)
+    if rel:
+        download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel / folder_name)
+    else:
+        download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
     pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
 
     # Pick best format spec: merge when ffmpeg available, single-stream fallback otherwise
@@ -84,6 +89,9 @@ async def create_subscription(
         download_existing=req.download_existing,
         download_dir=download_dir,
         notify=req.notify,
+        category=req.category,
+        subcategory=req.subcategory,
+        tag=req.tag,
     )
     session.add(sub)
     # Flush (not commit) so sub.id is assigned while we're still in one
@@ -124,6 +132,9 @@ async def create_subscription(
                 output_dir=download_dir,
                 output_path=existing_path,
                 subscription_id=sub.id,
+                category=sub.category,
+                subcategory=sub.subcategory,
+                tag=sub.tag,
             )
             session.add(dl)
             await session.flush()
@@ -181,6 +192,12 @@ async def update_subscription(
         sub.is_active = req.is_active
     if req.notify is not None:
         sub.notify = req.notify
+    if req.category is not None:
+        sub.category = req.category or None
+    if req.subcategory is not None:
+        sub.subcategory = req.subcategory or None
+    if req.tag is not None:
+        sub.tag = req.tag or None
 
     await session.commit()
     await session.refresh(sub)

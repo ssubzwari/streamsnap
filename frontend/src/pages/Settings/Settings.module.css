@@ -649,7 +649,7 @@
   width: 100%;
   aspect-ratio: 16 / 9;
   border-radius: var(--radius-sm);
-  background: #0a0a0b;
+  background: var(--color-bg);
   position: relative;
   overflow: hidden;
 }
@@ -660,20 +660,22 @@
   text-align: center;
 }
 
-/* Compact preview swatches per background id */
-.bgTilePreview[data-bg='none']         { background: repeating-linear-gradient(45deg, #1c1c1f 0 8px, #141416 8px 16px); }
-.bgTilePreview[data-bg='net']          { background: radial-gradient(circle at 30% 40%, #7c5cff 1.5px, transparent 2px) 0 0/22px 22px, radial-gradient(circle at 70% 70%, #7c5cff 1.5px, transparent 2px) 0 0/22px 22px, #0a0a0b; }
-.bgTilePreview[data-bg='waves']        { background: linear-gradient(180deg, #0a1a3a 0%, #1a2a4a 50%, #0a1a3a 100%); }
-.bgTilePreview[data-bg='cells']        { background: radial-gradient(circle at 25% 25%, #7c5cff 0 6px, transparent 7px), radial-gradient(circle at 75% 60%, #a78bfa 0 5px, transparent 6px), #1a153c; }
-.bgTilePreview[data-bg='dots']         { background: radial-gradient(circle, #7c5cff 1.5px, transparent 2px) 0 0/12px 12px, #0a0a0b; }
-.bgTilePreview[data-bg='rings']        { background: repeating-radial-gradient(circle at 50% 60%, #7c5cff 0 1px, transparent 1px 14px), #0a0a0b; }
-.bgTilePreview[data-bg='aurora']       { background: linear-gradient(120deg, #7c5cff 0%, #3fd97f 50%, #ff8cc8 100%); }
-.bgTilePreview[data-bg='starfield']    { background: radial-gradient(circle, #fff 0.5px, transparent 1px) 0 0/30px 30px, radial-gradient(circle, #fff 0.5px, transparent 1px) 10px 15px/30px 30px, #0a0a0b; }
-.bgTilePreview[data-bg='grid-pulse']   { background: linear-gradient(90deg, transparent 0 19px, #7c5cff 19px 20px) 0 0/20px 20px, linear-gradient(0deg, transparent 0 19px, #7c5cff 19px 20px) 0 0/20px 20px, #0a0a0b; }
-.bgTilePreview[data-bg='bubbles']      { background: radial-gradient(circle at 30% 70%, rgba(124,92,255,0.6) 0 12px, transparent 14px), radial-gradient(circle at 70% 40%, rgba(63,217,127,0.5) 0 9px, transparent 11px), #0a0a0b; }
-.bgTilePreview[data-bg='matrix']       { background: linear-gradient(180deg, transparent 0%, #7c5cff 100%), #0a0a0b; }
-.bgTilePreview[data-bg='plasma']       { background: radial-gradient(circle at 30% 30%, rgba(124,92,255,0.7), transparent 50%), radial-gradient(circle at 70% 70%, rgba(63,217,200,0.6), transparent 50%), radial-gradient(circle at 60% 30%, rgba(255,90,140,0.6), transparent 50%), #0a0a0b; }
-.bgTilePreview[data-bg='mesh-gradient'] { background: radial-gradient(circle at 25% 25%, #7c5cff, transparent 50%), radial-gradient(circle at 75% 25%, #3fd97f, transparent 50%), radial-gradient(circle at 50% 75%, #ff8cc8, transparent 50%), #0a0a0b; }
-.bgTilePreview[data-bg='constellation'] { background: radial-gradient(circle, #a78bfa 1px, transparent 1.5px) 0 0/24px 24px, linear-gradient(45deg, transparent 49%, rgba(124,92,255,0.4) 50%, transparent 51%), #0a0a0b; }
-.bgTilePreview[data-bg='neon-lines']   { background: linear-gradient(90deg, transparent, #7c5cff, transparent) 0 30%/100% 2px no-repeat, linear-gradient(90deg, transparent, #ff5cb0, transparent) 0 70%/100% 2px no-repeat, #0a0a0b; }
-.bgTilePreview[data-bg='snow']         { background: radial-gradient(circle, #fff 1px, transparent 1.5px) 0 0/16px 16px, radial-gradient(circle, #fff 0.7px, transparent 1px) 8px 8px/16px 16px, #1a1d2a; }
+/* Compact preview swatches per background id.
+   The base color uses --color-bg / --color-surface so the tiles re-skin
+   when the user toggles dark/light, mirroring how the live effect renders. */
+.bgTilePreview[data-bg='none']         { background: repeating-linear-gradient(45deg, var(--color-surface-hi) 0 8px, var(--color-surface) 8px 16px); }
+.bgTilePreview[data-bg='net']          { background: radial-gradient(circle at 30% 40%, var(--color-accent) 1.5px, transparent 2px) 0 0/22px 22px, radial-gradient(circle at 70% 70%, var(--color-accent) 1.5px, transparent 2px) 0 0/22px 22px, var(--color-bg); }
+.bgTilePreview[data-bg='waves']        { background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 40%, var(--color-bg)) 0%, color-mix(in srgb, var(--color-accent) 25%, var(--color-bg)) 50%, var(--color-bg) 100%); }
+.bgTilePreview[data-bg='cells']        { background: radial-gradient(circle at 25% 25%, var(--color-accent) 0 6px, transparent 7px), radial-gradient(circle at 75% 60%, color-mix(in srgb, var(--color-accent) 70%, white) 0 5px, transparent 6px), color-mix(in srgb, var(--color-accent) 18%, var(--color-bg)); }
+.bgTilePreview[data-bg='dots']         { background: radial-gradient(circle, var(--color-accent) 1.5px, transparent 2px) 0 0/12px 12px, var(--color-bg); }
+.bgTilePreview[data-bg='rings']        { background: repeating-radial-gradient(circle at 50% 60%, var(--color-accent) 0 1px, transparent 1px 14px), var(--color-bg); }
+.bgTilePreview[data-bg='aurora']       { background: linear-gradient(120deg, var(--color-accent) 0%, var(--color-success) 50%, #ff8cc8 100%); }
+.bgTilePreview[data-bg='starfield']    { background: radial-gradient(circle, var(--color-text) 0.5px, transparent 1px) 0 0/30px 30px, radial-gradient(circle, var(--color-text) 0.5px, transparent 1px) 10px 15px/30px 30px, var(--color-bg); }
+.bgTilePreview[data-bg='grid-pulse']   { background: linear-gradient(90deg, transparent 0 19px, var(--color-accent) 19px 20px) 0 0/20px 20px, linear-gradient(0deg, transparent 0 19px, var(--color-accent) 19px 20px) 0 0/20px 20px, var(--color-bg); }
+.bgTilePreview[data-bg='bubbles']      { background: radial-gradient(circle at 30% 70%, color-mix(in srgb, var(--color-accent) 60%, transparent) 0 12px, transparent 14px), radial-gradient(circle at 70% 40%, color-mix(in srgb, var(--color-success) 50%, transparent) 0 9px, transparent 11px), var(--color-bg); }
+.bgTilePreview[data-bg='matrix']       { background: linear-gradient(180deg, transparent 0%, var(--color-accent) 100%), var(--color-bg); }
+.bgTilePreview[data-bg='plasma']       { background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--color-accent) 70%, transparent), transparent 50%), radial-gradient(circle at 70% 70%, color-mix(in srgb, var(--color-success) 60%, transparent), transparent 50%), radial-gradient(circle at 60% 30%, rgba(255,90,140,0.6), transparent 50%), var(--color-bg); }
+.bgTilePreview[data-bg='mesh-gradient'] { background: radial-gradient(circle at 25% 25%, var(--color-accent), transparent 50%), radial-gradient(circle at 75% 25%, var(--color-success), transparent 50%), radial-gradient(circle at 50% 75%, #ff8cc8, transparent 50%), var(--color-bg); }
+.bgTilePreview[data-bg='constellation'] { background: radial-gradient(circle, color-mix(in srgb, var(--color-accent) 70%, white) 1px, transparent 1.5px) 0 0/24px 24px, linear-gradient(45deg, transparent 49%, color-mix(in srgb, var(--color-accent) 40%, transparent) 50%, transparent 51%), var(--color-bg); }
+.bgTilePreview[data-bg='neon-lines']   { background: linear-gradient(90deg, transparent, var(--color-accent), transparent) 0 30%/100% 2px no-repeat, linear-gradient(90deg, transparent, #ff5cb0, transparent) 0 70%/100% 2px no-repeat, var(--color-bg); }
+.bgTilePreview[data-bg='snow']         { background: radial-gradient(circle, var(--color-text) 1px, transparent 1.5px) 0 0/16px 16px, radial-gradient(circle, var(--color-text) 0.7px, transparent 1px) 8px 8px/16px 16px, color-mix(in srgb, var(--color-accent) 12%, var(--color-bg)); }

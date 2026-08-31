@@ -8,13 +8,14 @@ import sys
 from datetime import datetime
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import delete as sa_delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db import engine, get_session
+from app.db import SCHEMA_VERSION, engine, get_session
 from app.models import Download, Notification, NotificationChannel, SeenVideo, Setting, Subscription
 from app.schemas import SettingsMap
 
@@ -267,6 +268,20 @@ async def update_ytdlp() -> dict:
     }
 
 
+# ── Schema version ───────────────────────────────────────────────────────────
+
+@router.get("/db/schema-version")
+async def db_schema_version(session: AsyncSession = Depends(get_session)) -> dict:
+    """Return the current DB schema version and the target version the app expects."""
+    row = await session.get(Setting, "schema_version")
+    current = int(row.value) if row and row.value else 0
+    return {
+        "current_version": current,
+        "target_version": SCHEMA_VERSION,
+        "up_to_date": current == SCHEMA_VERSION,
+    }
+
+
 # ── Database admin ────────────────────────────────────────────────────────────
 #
 # Backups live in the same mount we use for the yt-dlp install when it's
@@ -397,6 +412,44 @@ async def restore_db(req: RestoreRequest) -> dict:
     return {"restored_from": req.name, "path": str(dst)}
 
 
+@router.get("/db/backups/{name}/download")
+async def download_db_backup(name: str) -> FileResponse:
+    """Stream a backup file to the browser for local download."""
+    if not _SAFE_NAME.match(name) or not name.endswith(".db"):
+        raise HTTPException(status_code=400, detail="Invalid backup name")
+    path = _backup_dir() / name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Backup not found: {name}")
+    return FileResponse(
+        path=str(path),
+        media_type="application/octet-stream",
+        filename=name,
+    )
+
+
+@router.post("/db/backups/upload")
+async def upload_db_backup(file: UploadFile = File(...)) -> dict:
+    """Accept a .db backup file uploaded from the browser and save it to the backup directory."""
+    filename = file.filename or ""
+    if not _SAFE_NAME.match(filename) or not filename.endswith(".db"):
+        raise HTTPException(status_code=400, detail="File must be a .db file with a safe name")
+
+    dst = _backup_dir() / filename
+    try:
+        contents = await file.read()
+        await asyncio.to_thread(dst.write_bytes, contents)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}")
+
+    stat = dst.stat()
+    return {
+        "name": dst.name,
+        "path": str(dst),
+        "size": stat.st_size,
+        "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+    }
+
+
 @router.delete("/db/backups/{name}", status_code=204)
 async def delete_db_backup(name: str) -> None:
     """Delete a single backup file by name."""
@@ -451,9 +504,14 @@ async def initialize_db(session: AsyncSession = Depends(get_session)) -> dict:
 
     # Reclaim primary keys so the next subscription gets id=1 (keeps UI
     # predictable and prevents any lingering id-reuse collisions).
-    await session.execute(
-        text("DELETE FROM sqlite_sequence WHERE name IN ('downloads','subscriptions','seen_videos','notifications')")
-    )
+    # sqlite_sequence only exists if tables use AUTOINCREMENT; safe to ignore if missing.
+    try:
+        await session.execute(
+            text("DELETE FROM sqlite_sequence WHERE name IN ('downloads','subscriptions','seen_videos','notifications')")
+        )
+    except Exception:
+        # sqlite_sequence table may not exist in all scenarios (e.g., fresh DB with no sequences yet)
+        pass
 
     await session.commit()
 

@@ -7,6 +7,14 @@ export interface CreateDownloadRequest {
   title?: string;
   thumbnail?: string;
   duration?: number;
+  category?: string | null;
+  subcategory?: string | null;
+  tag?: string | null;
+}
+
+export interface CategoryTree {
+  // category → { subcategory → tag[] }
+  categories: Record<string, Record<string, string[]>>;
 }
 
 export async function createDownload(
@@ -70,10 +78,34 @@ export async function previewPlaylist(url: string): Promise<PlaylistPreview> {
   }
 }
 
+export async function listGroupedDownloads(): Promise<{
+  by_subscription: Array<{
+    subscription_id: number;
+    subscription_title: string;
+    download_count: number;
+    downloads: DownloadInfo[];
+  }>;
+  manual_downloads: DownloadInfo[];
+}> {
+  return apiFetch("/downloads/grouped");
+}
+
+export async function listTags(): Promise<{
+  tags: Record<string, string[]>;
+}> {
+  return apiFetch("/downloads/tags");
+}
+
 export async function downloadPlaylist(
   url: string,
   format_spec: string,
-  extra?: { title?: string; entries?: PlaylistEntry[] },
+  extra?: {
+    title?: string;
+    entries?: PlaylistEntry[];
+    category?: string | null;
+    subcategory?: string | null;
+    tag?: string | null;
+  },
 ): Promise<DownloadInfo[]> {
   return apiFetch<DownloadInfo[]>("/downloads/playlist", {
     method: "POST",
@@ -81,6 +113,8 @@ export async function downloadPlaylist(
   });
 }
 
+/** @deprecated Replaced by direct file-download — kept so older code paths
+ *  don't 404 if anything still references it. */
 export async function openDownload(id: number): Promise<void> {
   return apiFetch<void>(`/downloads/${id}/open`);
 }
@@ -112,4 +146,15 @@ export async function resumeIncompleteDownloads(): Promise<{
     "/downloads/resume-incomplete",
     { method: "POST" },
   );
+}
+
+export async function listCategories(): Promise<CategoryTree> {
+  return apiFetch<CategoryTree>("/downloads/categories");
+}
+
+/** Build the URL the browser hits to save the file to disk. The endpoint
+ *  serves the file with `Content-Disposition: attachment` so the browser
+ *  downloads it instead of streaming inline. */
+export function downloadFileUrl(id: number): string {
+  return `/api/downloads/${id}/file`;
 }

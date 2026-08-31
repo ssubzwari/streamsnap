@@ -13,6 +13,9 @@ export interface SubscriptionCreate {
   /** Playlist title + full entry list from the client's review step — lets the server skip re-extraction. */
   playlist_title?: string;
   entries?: PlaylistEntry[];
+  category?: string | null;
+  subcategory?: string | null;
+  tag?: string | null;
 }
 
 export interface SubscriptionUpdate {
@@ -20,6 +23,9 @@ export interface SubscriptionUpdate {
   format_spec?: string;
   is_active?: boolean;
   notify?: boolean;
+  category?: string | null;
+  subcategory?: string | null;
+  tag?: string | null;
 }
 
 export async function listSubscriptions(): Promise<SubscriptionInfo[]> {

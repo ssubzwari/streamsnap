@@ -86,3 +86,31 @@ export async function initializeDb(): Promise<DbInitializeResult> {
 export async function deleteDbBackup(name: string): Promise<void> {
   await apiFetch<void>(`/settings/db/backups/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
+
+export function downloadDbBackup(name: string): void {
+  const a = document.createElement("a");
+  a.href = `/api/settings/db/backups/${encodeURIComponent(name)}/download`;
+  a.download = name;
+  a.click();
+}
+
+export interface DbSchemaVersionInfo {
+  current_version: number;
+  target_version: number;
+  up_to_date: boolean;
+}
+
+export async function getDbSchemaVersion(): Promise<DbSchemaVersionInfo> {
+  return apiFetch<DbSchemaVersionInfo>("/settings/db/schema-version");
+}
+
+export async function uploadDbBackup(file: File): Promise<DbBackupResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/settings/db/backups/upload", { method: "POST", body: form });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+  return res.json();
+}
