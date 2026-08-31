@@ -10,6 +10,18 @@ def safe_folder_name(name: str) -> str:
     return safe[:80] or "playlist"
 
 
+def subscription_download_dir(sub, base_dir: str) -> str:
+    """The folder a subscription's videos belong in.
+
+    Prefer the stored ``download_dir``; fall back to reconstructing it from the
+    title for subscriptions created before that column existed.
+    """
+    if getattr(sub, "download_dir", None):
+        return sub.download_dir
+    folder = safe_folder_name(sub.title or f"subscription {getattr(sub, 'id', '')}")
+    return str(pathlib.Path(base_dir) / folder)
+
+
 # Extensions we consider "a finished media file" when probing the download
 # folder. Kept in sync with the container/audio codecs yt-dlp commonly emits.
 MEDIA_EXTS: tuple[str, ...] = (

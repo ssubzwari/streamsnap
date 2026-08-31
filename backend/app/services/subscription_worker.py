@@ -12,10 +12,11 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
+from app.config import settings
 from app.db import get_sessionmaker
 from app.models import Download, SeenVideo, Subscription
 from app.services.notifications import create_notification
-from app.utils import find_existing_file, youtube_thumbnail_url
+from app.utils import find_existing_file, subscription_download_dir, youtube_thumbnail_url
 from app.ws import emit_download_completed, emit_subscription_checked, emit_subscription_new_video
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ async def check_subscription(subscription_id: int) -> None:
         url = sub.url
         format_spec = sub.format_spec or "bestvideo*+bestaudio/best"
         sub_title = sub.title or url
-        download_dir = sub.download_dir
+        download_dir = subscription_download_dir(sub, settings.DOWNLOAD_DIR)
         notify_enabled = sub.notify
 
     # Extract flat playlist in a thread (blocking I/O)
@@ -116,6 +117,7 @@ async def check_subscription(subscription_id: int) -> None:
                 format_spec=format_spec,
                 status="completed" if existing_path else "queued",
                 percent=100.0 if existing_path else 0.0,
+                output_dir=download_dir,
                 output_path=existing_path,
                 subscription_id=subscription_id,
             )

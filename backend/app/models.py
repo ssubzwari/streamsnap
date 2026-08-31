@@ -19,6 +19,9 @@ class Download(Base):
     speed: Mapped[str | None] = mapped_column(String)
     eta: Mapped[int | None]
     format_spec: Mapped[str | None] = mapped_column(String)
+    # Target directory for this download (playlist / subscription subfolder, or
+    # the app default). Persisted so a resume/retry writes to the right place.
+    output_dir: Mapped[str | None] = mapped_column(String)
     output_path: Mapped[str | None] = mapped_column(String)
     error_message: Mapped[str | None] = mapped_column(String)
     subscription_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("subscriptions.id"), nullable=True)

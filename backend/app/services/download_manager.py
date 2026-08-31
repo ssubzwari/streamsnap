@@ -200,10 +200,8 @@ class DownloadManager:
 
         Also lifts a pause — this is the "Resume" action.
         """
-        import os
-
         from sqlalchemy import and_, or_, select
-        from app.models import Download, Subscription
+        from app.models import Download
 
         await self.resume()
 
@@ -234,13 +232,9 @@ class DownloadManager:
                 if d.id in self._active_futures:
                     continue
 
-                output_dir: str | None = None
-                if d.subscription_id is not None:
-                    sub = await session.get(Subscription, d.subscription_id)
-                    if sub is not None:
-                        output_dir = sub.download_dir
-                if output_dir is None and d.output_path:
-                    output_dir = os.path.dirname(d.output_path) or None
+                output_dir = await self._resolve_output_dir(session, d)
+                if output_dir and d.output_dir != output_dir:
+                    d.output_dir = output_dir  # backfill for next time
 
                 d.status = "queued"
                 d.speed = None
@@ -269,6 +263,24 @@ class DownloadManager:
         return False
 
     # ── Internal tasks ────────────────────────────────────────────────────────
+
+    async def _resolve_output_dir(self, session, download) -> str | None:
+        """Where a download should write — persisted dir → subscription folder →
+        the folder a prior attempt used. None means the app default."""
+        import os
+
+        from app.models import Subscription
+        from app.utils import subscription_download_dir
+
+        if download.output_dir:
+            return download.output_dir
+        if download.subscription_id is not None:
+            sub = await session.get(Subscription, download.subscription_id)
+            if sub is not None:
+                return subscription_download_dir(sub, settings.DOWNLOAD_DIR)
+        if download.output_path:
+            return os.path.dirname(download.output_path) or None
+        return None
 
     async def _load_app_settings(self) -> dict:
         """Load all Setting rows as a plain {key: value} dict."""

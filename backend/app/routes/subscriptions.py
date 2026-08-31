@@ -121,6 +121,7 @@ async def create_subscription(
                 format_spec=format_spec,
                 status="completed" if existing_path else "queued",
                 percent=100.0 if existing_path else 0.0,
+                output_dir=download_dir,
                 output_path=existing_path,
                 subscription_id=sub.id,
             )

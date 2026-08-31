@@ -46,6 +46,21 @@ async def init_db() -> None:
                 text("ALTER TABLE notifications ADD COLUMN thumbnail VARCHAR")
             )
 
+        dl_cols = await conn.run_sync(lambda c: _existing_cols(c, "downloads"))
+        if "output_dir" not in dl_cols:
+            await conn.execute(
+                text("ALTER TABLE downloads ADD COLUMN output_dir VARCHAR")
+            )
+            # Backfill: subscription downloads → the subscription's folder.
+            await conn.execute(
+                text(
+                    "UPDATE downloads SET output_dir = ("
+                    "  SELECT s.download_dir FROM subscriptions s "
+                    "  WHERE s.id = downloads.subscription_id"
+                    ") WHERE subscription_id IS NOT NULL AND output_dir IS NULL"
+                )
+            )
+
 
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     """Returns the session factory for use outside of route dependencies."""

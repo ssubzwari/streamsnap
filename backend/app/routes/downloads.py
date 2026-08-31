@@ -210,6 +210,7 @@ async def download_playlist(
             format_spec=req.format_spec,
             status="completed" if existing_path else "queued",
             percent=100.0 if existing_path else 0.0,
+            output_dir=download_dir,
             output_path=existing_path,
         )
         session.add(dl)
@@ -415,6 +416,7 @@ async def retry_download(
     import os
 
     from app.models import Subscription
+    from app.utils import subscription_download_dir
 
     download = await session.get(Download, download_id)
     if not download:
@@ -422,14 +424,14 @@ async def retry_download(
     if download.status in ("queued", "downloading"):
         raise HTTPException(status_code=409, detail="Download is already active")
 
-    # Re-derive the output directory: subscription folder → the folder the
+    # Where to write: the stored dir → the subscription folder → the folder the
     # previous attempt targeted → the app default.
-    output_dir: str | None = None
-    if download.subscription_id is not None:
+    output_dir: str | None = download.output_dir
+    if not output_dir and download.subscription_id is not None:
         sub = await session.get(Subscription, download.subscription_id)
         if sub is not None:
-            output_dir = sub.download_dir
-    if output_dir is None and download.output_path:
+            output_dir = subscription_download_dir(sub, settings.DOWNLOAD_DIR)
+    if not output_dir and download.output_path:
         output_dir = os.path.dirname(download.output_path) or None
 
     download.status = "queued"
@@ -437,6 +439,8 @@ async def retry_download(
     download.error_message = None
     download.speed = None
     download.eta = None
+    if output_dir:
+        download.output_dir = output_dir
     await session.commit()
     await session.refresh(download)
 
