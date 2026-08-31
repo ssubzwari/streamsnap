@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feature/docker
     paths:
       - "backend/**"
       - "frontend/**"
@@ -61,6 +60,9 @@ jobs:
           tags: |
             # latest on every push to main
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            # keep the legacy `alpha` tag pointing at main so the deployed
+            # compose stack (which pins :alpha) stays current
+            type=raw,value=alpha,enable=${{ github.ref == 'refs/heads/main' }}
             # branch name
             type=ref,event=branch
             # short SHA  (e.g. sha-a1b2c3d)
