@@ -226,6 +226,37 @@ function formatDate(iso: string | null): string {
   });
 }
 
+// Subscription check interval is stored in minutes; the UI works in days.
+const MINUTES_PER_DAY = 1440;
+
+function daysToMinutes(days: string | number): number {
+  const d = parseFloat(String(days));
+  if (!Number.isFinite(d) || d <= 0) return MINUTES_PER_DAY;
+  return Math.max(1, Math.round(d * MINUTES_PER_DAY));
+}
+
+function minutesToDaysInput(minutes: number | string): string {
+  const m = parseInt(String(minutes), 10);
+  if (!Number.isFinite(m) || m <= 0) return "1";
+  const days = m / MINUTES_PER_DAY;
+  return String(Number(days.toFixed(2)));
+}
+
+function formatInterval(minutes: number): string {
+  if (!minutes || minutes <= 0) return "—";
+  const days = minutes / MINUTES_PER_DAY;
+  if (days >= 1) {
+    const rounded = Number(days.toFixed(days % 1 === 0 ? 0 : 1));
+    return `${rounded} day${rounded === 1 ? "" : "s"}`;
+  }
+  const hours = minutes / 60;
+  if (hours >= 1) {
+    const rounded = Number(hours.toFixed(hours % 1 === 0 ? 0 : 1));
+    return `${rounded} hour${rounded === 1 ? "" : "s"}`;
+  }
+  return `${minutes} min`;
+}
+
 function qualityLabel(d: DownloadInfo): string {
   if (d.height) return `${d.height}p`;
   if (d.format_spec) return d.format_spec;
@@ -319,7 +350,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   // ── Advanced options state ────────────────────────────────────────────────
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [downloadFolder, setDownloadFolder] = useState("Default");
-  const [subCheckInterval, setSubCheckInterval] = useState("60");
+  const [subCheckInterval, setSubCheckInterval] = useState("1"); // days
   const [optionPresets, setOptionPresets] = useState("");
 
   // ── Downloads state ───────────────────────────────────────────────────────
@@ -337,7 +368,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   const [subs, dispatchSubs] = useReducer(subsReducer, []);
   const [addSubOpen, setAddSubOpen] = useState(false);
   const [subUrl, setSubUrl] = useState("");
-  const [subInterval, setSubInterval] = useState("60");
+  const [subInterval, setSubInterval] = useState("1"); // days
   const [subDownloadExisting, setSubDownloadExisting] = useState(false);
   const [subNotify, setSubNotify] = useState(true);
   const [subFormat, setSubFormat] = useState("best");
@@ -394,7 +425,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     getSettings()
       .then(({ settings }) => {
         if (settings.subscription_check_interval_minutes)
-          setSubCheckInterval(settings.subscription_check_interval_minutes);
+          setSubCheckInterval(minutesToDaysInput(settings.subscription_check_interval_minutes));
         if (settings.download_folder)
           setDownloadFolder(settings.download_folder);
         if (settings.option_presets)
@@ -649,7 +680,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     setSubmitError(null);
 
     const draft = {
-      check_interval_minutes: parseInt(subCheckInterval) || 60,
+      check_interval_minutes: daysToMinutes(subCheckInterval),
       format_spec: buildFormatSpec(type, quality, format, codec),
       notify: subNotify,
     };
@@ -783,7 +814,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   // ── Handlers: advanced options save ──────────────────────────────────────
   const handleSaveSettings = async () => {
     await updateSettings({
-      subscription_check_interval_minutes: subCheckInterval,
+      subscription_check_interval_minutes: String(daysToMinutes(subCheckInterval)),
       download_folder: downloadFolder,
       option_presets: optionPresets,
     }).catch(console.error);
@@ -917,7 +948,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     setSubError(null);
 
     const draft = {
-      check_interval_minutes: parseInt(subInterval) || 60,
+      check_interval_minutes: daysToMinutes(subInterval),
       format_spec: subFormat,
       notify: subNotify,
     };
@@ -1231,11 +1262,12 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                     />
                   </label>
                   <label className={styles.advancedLabel}>
-                    Subscription Check (min)
+                    Subscription Check (days)
                     <input
                       className={styles.advancedInput}
                       type="number"
-                      min="1"
+                      min="0.25"
+                      step="0.25"
                       value={subCheckInterval}
                       onChange={(e) => setSubCheckInterval(e.target.value)}
                       onBlur={handleSaveSettings}
@@ -1848,11 +1880,12 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                   onChange={(e) => setSubUrl(e.target.value)}
                 />
                 <label className={styles.dropdownLabel}>
-                  Interval (min)
+                  Interval (days)
                   <input
                     className={styles.advancedInput}
                     type="number"
-                    min="1"
+                    min="0.25"
+                    step="0.25"
                     value={subInterval}
                     onChange={(e) => setSubInterval(e.target.value)}
                     style={{ width: "80px" }}
@@ -1936,7 +1969,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                   </th>
                   <th>Name</th>
                   <th>URL</th>
-                  <th>Interval (min)</th>
+                  <th>Interval</th>
                   <th>Last checked</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -1973,7 +2006,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                         {s.url}
                       </span>
                     </td>
-                    <td className={styles.metaCell}>{s.check_interval_minutes}</td>
+                    <td className={styles.metaCell}>{formatInterval(s.check_interval_minutes)}</td>
                     <td className={styles.metaCell}>
                       {formatDate(s.last_checked_at)}
                     </td>
