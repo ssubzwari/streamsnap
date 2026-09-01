@@ -7,6 +7,7 @@ import glob
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 
 logger = logging.getLogger(__name__)
@@ -37,8 +38,6 @@ def fetch_playlist_artwork(video_url: str, folder: str, *, overwrite: bool = Tru
             "outtmpl": {"default": os.path.join(tmp, "art.%(ext)s")},
             "quiet": True,
             "no_warnings": True,
-            # Normalise to jpg — Plex is happiest with jpg/png, not webp.
-            "postprocessors": [{"key": "FFmpegThumbnailsConvertor", "format": "jpg"}],
         }
         try:
             with YoutubeDL(opts) as ydl:
@@ -54,17 +53,53 @@ def fetch_playlist_artwork(video_url: str, folder: str, *, overwrite: bool = Tru
         if not candidates:
             logger.warning("artwork: no thumbnail file produced for %s", video_url)
             return []
-        # Prefer a real jpg if the convertor made one.
         candidates.sort(key=lambda p: 0 if p.lower().endswith((".jpg", ".jpeg")) else 1)
         src = candidates[0]
-        ext = ".jpg" if src.lower().endswith((".jpg", ".jpeg")) else os.path.splitext(src)[1]
+
+        # Plex wants jpg/png. Convert webp/png → jpg with ffmpeg; if that
+        # fails, fall back to copying whatever we got.
+        jpg = os.path.join(tmp, "art_final.jpg")
+        if src.lower().endswith((".jpg", ".jpeg")):
+            jpg, ext = src, ".jpg"
+        else:
+            ext = ".jpg"
+            ffmpeg = _ffmpeg_bin()
+            if ffmpeg and _run_ffmpeg([ffmpeg, "-y", "-i", src, jpg]):
+                pass
+            else:
+                jpg, ext = src, os.path.splitext(src)[1]
 
         written: list[str] = []
         for name in _ARTWORK_NAMES:
+            # Drop any previous copy in another format (e.g. an old .webp).
+            keep = os.path.join(folder, f"{name}{ext}")
+            for stale in glob.glob(os.path.join(folder, f"{name}.*")):
+                if stale != keep and stale.rsplit(".", 1)[-1].lower() in (
+                    "jpg", "jpeg", "png", "webp", "bmp", "gif"
+                ):
+                    try:
+                        os.remove(stale)
+                    except OSError:
+                        pass
             dst = os.path.join(folder, f"{name}{ext}")
             try:
-                shutil.copyfile(src, dst)
+                shutil.copyfile(jpg, dst)
                 written.append(dst)
             except OSError as exc:
                 logger.warning("artwork: could not write %s: %s", dst, exc)
         return written
+
+
+def _ffmpeg_bin() -> str | None:
+    from app.ytdl.service import _find_ffmpeg
+
+    return _find_ffmpeg()
+
+
+def _run_ffmpeg(cmd: list[str]) -> bool:
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=30, check=True)
+        return True
+    except (subprocess.SubprocessError, OSError) as exc:
+        logger.warning("artwork: ffmpeg convert failed: %s", exc)
+        return False
