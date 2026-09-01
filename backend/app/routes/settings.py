@@ -126,6 +126,7 @@ ALLOWED_KEYS = {
     "ffmpeg_location",
     "keep_video",
     "pad_episode_numbers",
+    "subscription_artwork",
     # Download
     "max_concurrent_downloads",
     "concurrent_fragments",

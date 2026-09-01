@@ -10,14 +10,36 @@ from app.db import get_session
 from app.models import SeenVideo, Subscription
 from app.schemas import SubscriptionCreate, SubscriptionInfo, SubscriptionUpdate
 from app.services.subscription_worker import schedule_subscription, unschedule_subscription
-from app.utils import category_subdir, find_existing_file, safe_folder_name
+from app.utils import (
+    category_subdir,
+    find_existing_file,
+    safe_folder_name,
+    subscription_download_dir,
+)
 
 router = APIRouter(prefix="/api/subscriptions", tags=["subscriptions"])
+
+
+async def _generate_artwork(video_url: str, folder: str) -> None:
+    """Best-effort: fetch the first video's thumbnail into poster/background."""
+    from app.ytdl.artwork import fetch_playlist_artwork
+
+    await asyncio.to_thread(fetch_playlist_artwork, video_url, folder)
+
+
+async def _artwork_enabled() -> bool:
+    from app.models import Setting
+    from app.db import get_sessionmaker
+
+    async with get_sessionmaker()() as s:
+        row = await s.get(Setting, "subscription_artwork")
+    return (row.value if row and row.value is not None else "true") != "false"
 
 
 @router.post("", response_model=SubscriptionInfo, status_code=201)
 async def create_subscription(
     req: SubscriptionCreate,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> SubscriptionInfo:
     from app.ytdl.service import extract_playlist, _is_ffmpeg_available
@@ -150,6 +172,12 @@ async def create_subscription(
     # Register APScheduler job
     await schedule_subscription(sub)
 
+    # Plex artwork: poster.jpg + background.jpg from the first video's
+    # thumbnail. Runs after the response so it never delays subscribing.
+    first = playlist_data["entries"][0]["url"] if playlist_data["entries"] else None
+    if first and await _artwork_enabled():
+        background_tasks.add_task(_generate_artwork, first, download_dir)
+
     return SubscriptionInfo.model_validate(sub)
 
 
@@ -245,3 +273,48 @@ async def manual_check(
     from app.services.subscription_worker import check_subscription
     background_tasks.add_task(check_subscription, sub_id)
     return {"queued": True}
+
+
+@router.post("/{sub_id}/artwork", status_code=202)
+async def regenerate_artwork(
+    sub_id: int,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """(Re)build poster.jpg + background.jpg for an existing subscription from
+    its first (earliest-seen) video's thumbnail."""
+    from app.ytdl.service import extract_playlist
+
+    sub = await session.get(Subscription, sub_id)
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
+    folder = subscription_download_dir(sub, settings.DOWNLOAD_DIR)
+    pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
+
+    # Prefer a recorded seen video (stable "first" over time); fall back to a
+    # fresh flat-playlist extraction.
+    row = (
+        await session.execute(
+            select(SeenVideo.video_id)
+            .where(SeenVideo.subscription_id == sub_id)
+            .order_by(SeenVideo.id.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if row:
+        video_url = f"https://www.youtube.com/watch?v={row}"
+    else:
+        try:
+            data = await asyncio.to_thread(extract_playlist, sub.url)
+            entries = data.get("entries") or []
+            video_url = entries[0]["url"] if entries else None
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+    if not video_url:
+        raise HTTPException(status_code=422, detail="No videos found for this subscription")
+
+    background_tasks.add_task(_generate_artwork, video_url, folder)
+    return {"queued": True, "folder": folder}

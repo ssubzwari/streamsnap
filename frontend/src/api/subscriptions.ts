@@ -58,3 +58,7 @@ export async function deleteSubscription(id: number): Promise<void> {
 export async function checkSubscription(id: number): Promise<void> {
   return apiFetch<void>(`/subscriptions/${id}/check`, { method: "POST" });
 }
+
+export async function regenerateArtwork(id: number): Promise<{ queued: boolean; folder: string }> {
+  return apiFetch(`/subscriptions/${id}/artwork`, { method: "POST" });
+}

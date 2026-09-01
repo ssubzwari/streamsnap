@@ -49,6 +49,7 @@ interface SettingsState {
   // Metadata & Thumbnails
   embed_thumbnail: string;
   write_thumbnail: string;
+  subscription_artwork: string;
   write_info_json: string;
   write_description: string;
   embed_metadata: string;
@@ -105,6 +106,7 @@ const DEFAULTS: SettingsState = {
   convert_subs: "",
   embed_thumbnail: "false",
   write_thumbnail: "false",
+  subscription_artwork: "true",
   write_info_json: "false",
   write_description: "false",
   embed_metadata: "false",
@@ -567,6 +569,13 @@ export default function Settings({ onClose }: Props) {
                 <Row>
                   <Toggle label="Embed Thumbnail" checked={bool("embed_thumbnail")} onChange={() => toggle("embed_thumbnail")} />
                   <Toggle label="Write Thumbnail File" checked={bool("write_thumbnail")} onChange={() => toggle("write_thumbnail")} />
+                </Row>
+                <Row>
+                  <Toggle
+                    label="Subscription artwork for Plex (poster.jpg + background.jpg from the first video)"
+                    checked={s.subscription_artwork !== "false"}
+                    onChange={() => toggle("subscription_artwork")}
+                  />
                 </Row>
                 <SectionTitle>Metadata Files</SectionTitle>
                 <Row>

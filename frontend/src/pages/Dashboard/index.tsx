@@ -21,6 +21,7 @@ import {
   createSubscription,
   deleteSubscription,
   listSubscriptions,
+  regenerateArtwork,
   updateSubscription,
 } from "@/api/subscriptions";
 import {
@@ -74,6 +75,14 @@ const CopyIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+const ImageIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-4.35-4.35a2 2 0 0 0-2.83 0L3 21" />
   </svg>
 );
 
@@ -998,6 +1007,20 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       console.error(err);
     } finally {
       setCheckingSubId(null);
+    }
+  };
+
+  const [artworkSubId, setArtworkSubId] = useState<number | null>(null);
+  const handleRegenArtwork = async (id: number) => {
+    setArtworkSubId(id);
+    try {
+      await regenerateArtwork(id);
+      setStatusToast("Artwork queued — poster.jpg / background.jpg will land in the show folder");
+    } catch (err) {
+      console.error(err);
+      setStatusToast("Could not fetch artwork");
+    } finally {
+      setArtworkSubId(null);
     }
   };
 
@@ -1979,6 +2002,14 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                           title="Copy playlist URL"
                         >
                           <CopyIcon />
+                        </button>
+                        <button
+                          className={styles.iconBtn}
+                          onClick={() => handleRegenArtwork(s.id)}
+                          disabled={artworkSubId === s.id}
+                          title={artworkSubId === s.id ? "Fetching…" : "Fetch Plex artwork (poster + background)"}
+                        >
+                          <ImageIcon />
                         </button>
                         <button
                           className={styles.iconBtn}
