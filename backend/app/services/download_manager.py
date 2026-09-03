@@ -388,6 +388,14 @@ class DownloadManager:
             msg_type = msg.get("type")
             did = msg.get("id")
 
+            # If the download row was deleted, cancel the worker and clean up
+            if msg_type not in ("canceled", "error") and not await self._get_download(did):
+                event = self._cancel_events.get(did)
+                if event is not None:
+                    event.set()
+                self._cleanup(did)
+                continue
+
             if msg_type == "progress":
                 await self._update_db(
                     did,
