@@ -362,6 +362,13 @@ async def downloads_status() -> dict:
     return download_manager.status
 
 
+@router.post("/pause-all")
+async def pause_all_downloads() -> dict:
+    """Pause all active and queued downloads."""
+    await download_manager.pause("Paused by user")
+    return download_manager.status
+
+
 @router.post("/resume-incomplete")
 async def resume_incomplete_downloads() -> dict:
     """Lift any pause and re-enqueue downloads stuck in queued/downloading."""

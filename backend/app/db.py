@@ -11,7 +11,7 @@ _SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 # Bump this constant whenever a new _migrate_vN function is added.
 # Format: integer, monotonically increasing.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class Base(DeclarativeBase):
@@ -79,10 +79,31 @@ async def _migrate_v1(conn: AsyncConnection) -> None:
         )
 
 
+async def _migrate_v2(conn: AsyncConnection) -> None:
+    """Add output_dir column to downloads table and backfill from subscriptions."""
+    from sqlalchemy import text
+
+    dl_cols = await conn.run_sync(lambda c: _existing_cols(c, "downloads"))
+    if "output_dir" not in dl_cols:
+        await conn.execute(
+            text("ALTER TABLE downloads ADD COLUMN output_dir VARCHAR")
+        )
+        # Backfill: subscription downloads → the subscription's folder.
+        await conn.execute(
+            text(
+                "UPDATE downloads SET output_dir = ("
+                "  SELECT s.download_dir FROM subscriptions s "
+                "  WHERE s.id = downloads.subscription_id"
+                ") WHERE subscription_id IS NOT NULL AND output_dir IS NULL"
+            )
+        )
+
+
 # Registry — index N-1 contains the function that migrates to version N.
-# To add version 2: write _migrate_v2, append it here, set SCHEMA_VERSION = 2.
+# To add version 3: write _migrate_v3, append it here, set SCHEMA_VERSION = 3.
 _MIGRATIONS = [
     _migrate_v1,   # index 0 → reaches version 1
+    _migrate_v2,   # index 1 → reaches version 2
 ]
 
 
@@ -134,6 +155,8 @@ async def init_db() -> None:
                 {"v": str(target)},
             )
 
+        # ── Safety net: ensure required columns exist ───────────────────────────
+        # Handles databases created at current version without migration running.
         dl_cols = await conn.run_sync(lambda c: _existing_cols(c, "downloads"))
         if "output_dir" not in dl_cols:
             await conn.execute(
