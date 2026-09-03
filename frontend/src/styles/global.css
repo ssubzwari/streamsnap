@@ -28,3 +28,17 @@ body {
   position: relative;
   z-index: 1;
 }
+
+/* Respect the OS "reduce motion" preference — collapse transitions and
+   animations app-wide. The animated backgrounds honour this separately by
+   painting a single static frame. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

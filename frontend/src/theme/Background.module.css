@@ -14,24 +14,30 @@
   display: block;
 }
 
+/* Scrim: a flat dim plus a vignette so the animation reads as a quiet
+   accent behind the UI rather than competing with it. */
 .host::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(
-    ellipse at center,
-    rgba(10, 10, 11, 0) 0%,
-    rgba(10, 10, 11, 0.2) 70%,
-    rgba(10, 10, 11, 0.45) 100%
-  );
+  background:
+    radial-gradient(
+      ellipse at 50% 40%,
+      rgba(10, 10, 11, 0) 0%,
+      rgba(10, 10, 11, 0.35) 60%,
+      rgba(10, 10, 11, 0.62) 100%
+    ),
+    linear-gradient(rgba(10, 10, 11, 0.28), rgba(10, 10, 11, 0.28));
   pointer-events: none;
 }
 
 :global(html[data-theme='light']) .host::after {
-  background: radial-gradient(
-    ellipse at center,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.18) 70%,
-    rgba(255, 255, 255, 0.35) 100%
-  );
+  background:
+    radial-gradient(
+      ellipse at 50% 40%,
+      rgba(245, 245, 249, 0) 0%,
+      rgba(245, 245, 249, 0.4) 60%,
+      rgba(245, 245, 249, 0.62) 100%
+    ),
+    linear-gradient(rgba(245, 245, 249, 0.3), rgba(245, 245, 249, 0.3));
 }
