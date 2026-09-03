@@ -17,36 +17,119 @@ export interface CustomEffectHandle {
 
 type Factory = (canvas: HTMLCanvasElement, mode: ThemeMode) => CustomEffectHandle;
 
+// ── Motion / performance controls ──────────────────────────────────────────
+
+// Backgrounds are ambient decoration — 30fps is plenty and roughly halves the
+// per-frame cost versus running at the display refresh rate.
+const TARGET_FPS = 30;
+const FRAME_MS = 1000 / TARGET_FPS;
+
+// Ambient effects don't benefit from HiDPI crispness; capping the backing
+// store below the device pixel ratio is the single biggest win on 4K / retina
+// displays, where the gradient-fill effects would otherwise paint 4× the
+// pixels every frame.
+const MAX_BACKDROP_DPR = 1.5;
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+// ── Shared rAF driver ──────────────────────────────────────────────────────
+// One requestAnimationFrame loop feeds every running effect. It stops itself
+// entirely when the tab is hidden, when the app pauses it (e.g. the Settings
+// modal is covering the page), or when nothing is subscribed — so a background
+// effect costs zero while it can't be seen.
+
+type Tick = (now: number) => void;
+const subscribers = new Set<Tick>();
+let driverRaf = 0;
+let driverRunning = false;
+let lastFrame = 0;
+let externallyPaused = false;
+
+function driverShouldRun(): boolean {
+  return (
+    subscribers.size > 0 &&
+    !externallyPaused &&
+    !(typeof document !== "undefined" && document.hidden)
+  );
+}
+
+function driverFrame(now: number) {
+  driverRaf = requestAnimationFrame(driverFrame);
+  if (now - lastFrame < FRAME_MS) return;
+  lastFrame = now;
+  for (const cb of subscribers) cb(now);
+}
+
+function syncDriver() {
+  const run = driverShouldRun();
+  if (run && !driverRunning) {
+    driverRunning = true;
+    lastFrame = 0;
+    driverRaf = requestAnimationFrame(driverFrame);
+  } else if (!run && driverRunning) {
+    driverRunning = false;
+    cancelAnimationFrame(driverRaf);
+  }
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", syncDriver);
+}
+
+/** Pause/resume every animated background (used while the app is obscured). */
+export function setEffectsPaused(paused: boolean) {
+  externallyPaused = paused;
+  syncDriver();
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function setupCanvas(canvas: HTMLCanvasElement) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = Math.min(window.devicePixelRatio || 1, MAX_BACKDROP_DPR);
+  let scheduled = false;
   const fit = () => {
     const w = canvas.clientWidth || window.innerWidth;
     const h = canvas.clientHeight || window.innerHeight;
-    canvas.width = Math.floor(w * dpr);
-    canvas.height = Math.floor(h * dpr);
+    canvas.width = Math.max(1, Math.floor(w * dpr));
+    canvas.height = Math.max(1, Math.floor(h * dpr));
     const ctx = canvas.getContext("2d");
     if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
+  const onResize = () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      fit();
+    });
+  };
   fit();
-  window.addEventListener("resize", fit);
-  return () => window.removeEventListener("resize", fit);
+  window.addEventListener("resize", onResize);
+  return () => window.removeEventListener("resize", onResize);
 }
 
 function loop(draw: (t: number) => void): () => void {
-  let raf = 0;
-  let stopped = false;
   const start = performance.now();
-  const tick = (now: number) => {
-    if (stopped) return;
-    draw((now - start) / 1000);
-    raf = requestAnimationFrame(tick);
-  };
-  raf = requestAnimationFrame(tick);
+
+  // Honour the OS "reduce motion" setting: paint a single representative
+  // frame and never animate.
+  if (prefersReducedMotion()) {
+    requestAnimationFrame(() => draw(0));
+    return () => {};
+  }
+
+  const tick: Tick = (now) => draw((now - start) / 1000);
+  subscribers.add(tick);
+  syncDriver();
   return () => {
-    stopped = true;
-    cancelAnimationFrame(raf);
+    subscribers.delete(tick);
+    syncDriver();
   };
 }
 
@@ -354,24 +437,23 @@ const constellation: Factory = (canvas, mode) => {
       if (p.x < 0 || p.x > w) p.vx *= -1;
       if (p.y < 0 || p.y > h) p.vy *= -1;
     });
-    const linkColor = dark ? "124,92,255" : "80,60,200";
+    const [lr, lg, lb] = (dark ? [124, 92, 255] : [80, 60, 200]);
     const dotColor = dark ? "#a78bfa" : "#5a3fff";
+    const MAX_D = 130;
+    const MAX_D2 = MAX_D * MAX_D;
     ctx.lineWidth = 1;
     for (let i = 0; i < N; i++) {
+      const pi = pts[i];
       for (let j = i + 1; j < N; j++) {
-        const dx = pts[i].x - pts[j].x;
-        const dy = pts[i].y - pts[j].y;
-        const d = Math.hypot(dx, dy);
-        if (d < 130) {
-          ctx.strokeStyle = rgba(
-            +linkColor.split(",")[0],
-            +linkColor.split(",")[1],
-            +linkColor.split(",")[2],
-            1 - d / 130,
-          );
+        const pj = pts[j];
+        const dx = pi.x - pj.x;
+        const dy = pi.y - pj.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < MAX_D2) {
+          ctx.strokeStyle = rgba(lr, lg, lb, 1 - Math.sqrt(d2) / MAX_D);
           ctx.beginPath();
-          ctx.moveTo(pts[i].x, pts[i].y);
-          ctx.lineTo(pts[j].x, pts[j].y);
+          ctx.moveTo(pi.x, pi.y);
+          ctx.lineTo(pj.x, pj.y);
           ctx.stroke();
         }
       }
@@ -393,7 +475,7 @@ const neonLines: Factory = (canvas, mode) => {
   const ctx = canvas.getContext("2d")!;
   const dark = mode === "dark";
   type L = { y: number; speed: number; hue: number; thickness: number };
-  const N = 14;
+  const N = 10;
   let lines: L[] = [];
   const stop = loop((t) => {
     const w = canvas.clientWidth;
@@ -417,8 +499,8 @@ const neonLines: Factory = (canvas, mode) => {
       grad.addColorStop(1, c + "0)");
       ctx.strokeStyle = grad;
       ctx.lineWidth = l.thickness;
-      ctx.shadowBlur = 16;
-      ctx.shadowColor = `hsla(${l.hue},90%,65%,0.7)`;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = `hsla(${l.hue},90%,65%,0.6)`;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(w, y + Math.sin(t * 0.5 + i) * 30);

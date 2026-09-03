@@ -98,6 +98,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  box-shadow: var(--shadow-card), var(--edge-hi);
 }
 
 .inputRow {
@@ -202,7 +203,7 @@
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-4);
   font-size: var(--text-sm);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-pop);
   z-index: 100;
   animation: toastIn var(--dur-base) var(--ease-out);
 }
@@ -311,6 +312,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   overflow: hidden;
+  box-shadow: var(--shadow-card), var(--edge-hi);
 }
 
 .advancedToggle {
@@ -519,6 +521,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   overflow: hidden;
+  box-shadow: var(--shadow-card), var(--edge-hi);
 }
 
 /* Wraps the table so overflow scrolls horizontally instead of clipping
@@ -1407,7 +1410,7 @@
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-pop);
 }
 
 .plHeader {

@@ -25,7 +25,7 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <Background />
+      <Background paused={settingsOpen} />
       <div className={styles.shell}>
         <nav className={styles.topNav}>
           <span className={styles.brand}>

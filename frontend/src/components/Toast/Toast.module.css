@@ -20,7 +20,7 @@
   padding: var(--space-3) var(--space-4);
   min-width: 280px;
   max-width: 380px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-pop);
   pointer-events: all;
   animation: slideIn var(--dur-base) var(--ease-out);
 }

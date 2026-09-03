@@ -11,6 +11,11 @@
   --color-success: #3fd97f;
   --color-warn: #ffb84c;
   --color-error: #ff5c5c;
+
+  /* Elevation — panels lifted off the animated backdrop */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.22);
+  --shadow-pop: 0 24px 64px rgba(0, 0, 0, 0.55);
+  --edge-hi: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 :root[data-theme='light'] {
@@ -25,6 +30,10 @@
   --color-success: #1e9d54;
   --color-warn: #c47a00;
   --color-error: #d6362f;
+
+  --shadow-card: 0 1px 2px rgba(20, 22, 40, 0.06), 0 10px 30px rgba(20, 22, 40, 0.08);
+  --shadow-pop: 0 24px 64px rgba(20, 22, 40, 0.20);
+  --edge-hi: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 :root {
