@@ -1481,12 +1481,12 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                         </div>
                       </div>
                     </td>
-                    <td className={styles.metaCell}>
+                    <td className={styles.metaCell} data-label="Type">
                       {d.vcodec === "none" ? "Audio" : "Video"}
                     </td>
-                    <td className={`${styles.metaCell} ${styles.qualityCell}`} title={qualityLabel(d)}>{qualityLabel(d)}</td>
-                    <td className={styles.metaCell}>{d.speed ?? "\u2014"}</td>
-                    <td className={styles.metaCell}>
+                    <td className={`${styles.metaCell} ${styles.qualityCell}`} data-label="Quality" title={qualityLabel(d)}>{qualityLabel(d)}</td>
+                    <td className={styles.metaCell} data-label="Speed">{d.speed ?? "\u2014"}</td>
+                    <td className={styles.metaCell} data-label="ETA">
                       {d.eta != null ? `${d.eta}s` : "\u2014"}
                     </td>
                     <td>
@@ -1666,9 +1666,9 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                     </div>
                                   </div>
                                 </td>
-                                <td className={styles.metaCell}>{d.vcodec === "none" ? "Audio" : "Video"}</td>
-                                <td className={styles.metaCell}>{formatBytes(d.filesize)}</td>
-                                <td className={styles.metaCell}>{formatDate(d.updated_at)}</td>
+                                <td className={styles.metaCell} data-label="Type">{d.vcodec === "none" ? "Audio" : "Video"}</td>
+                                <td className={styles.metaCell} data-label="File size">{formatBytes(d.filesize)}</td>
+                                <td className={styles.metaCell} data-label="Downloaded">{formatDate(d.updated_at)}</td>
                                 <td>
                                   <div className={styles.rowActions}>
                                     {d.status === "completed" && d.output_path && (
@@ -2020,7 +2020,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                         </span>
                       </div>
                     </td>
-                    <td>
+                    <td data-label="URL">
                       <span
                         className={`${styles.metaCell} ${styles.urlTruncate}`}
                         title={s.url}
@@ -2028,11 +2028,11 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                         {s.url}
                       </span>
                     </td>
-                    <td className={styles.metaCell}>{formatInterval(s.check_interval_minutes)}</td>
-                    <td className={styles.metaCell}>
+                    <td className={styles.metaCell} data-label="Interval">{formatInterval(s.check_interval_minutes)}</td>
+                    <td className={styles.metaCell} data-label="Last checked">
                       {formatDate(s.last_checked_at)}
                     </td>
-                    <td>
+                    <td data-label="Status">
                       <button
                         className={s.is_active ? styles.statusActive : styles.statusInactive}
                         onClick={() => handleToggleSub(s)}
