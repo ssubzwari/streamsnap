@@ -11,18 +11,23 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 ### Downloads
 - **Video & audio downloads** — single videos, channels, or playlists
 - **Format picker** — Type / Codec / Format / Quality dropdowns with smart fallback format specs
-- **Playlist downloads** — paste a playlist URL and all videos are enqueued into a named subfolder
+- **Playlist downloads** — paste a playlist URL and all videos are enqueued into a named subfolder; a review list lets you drop individual videos before anything starts
 - **Real-time progress** — live speed, ETA, and progress bars via WebSocket (Socket.IO)
+- **Queue control** — configurable concurrency (default 1, applied live), **Pause all** to halt active + queued downloads, **Resume stalled / Resume incomplete** to re-queue downloads left mid-flight after a restart, and automatic pause + alert when YouTube returns a bot-check error
 - **Bulk actions** — checkboxes on every row; clear selected, clear completed, clear failed, retry failed. Selection-aware: check some rows to act on just those, or leave everything unchecked to act on the whole set. Retry re-queues in place (keeps the row and its original format/folder) — also available per-row on failed/canceled downloads.
-- **Sort & filter** — newest/oldest sort toggle on the Completed table
+- **Completed grouped by source** — finished downloads are organised into collapsible groups per subscription, plus an "Other" group for manual downloads; newest/oldest sort toggle
 - **Play in browser** — click the ▶ icon to stream the finished file inline in a new tab (HTTP Range → native `<video>` with seek)
-- **Open file** — folder icon reveals the file in the OS file manager (cross-platform: Explorer / Finder / xdg-open)
+- **Download to device** — the ⬇ icon saves the finished file through the browser (works even when the server is on another machine); a server-side "reveal in file manager" endpoint is also available (Explorer / Finder / xdg-open)
+- **Import / Export / Copy URLs** — bulk-add a list of URLs, export the queue, or copy all URLs to the clipboard
+- **Episode-number padding** — single-digit episode numbers are zero-padded on download (`E1` → `E01`) for correct sorting in Plex/Jellyfin; a Settings action re-pads files already on disk
 
 ### Subscriptions
 - **Channel/playlist subscriptions** — new videos are downloaded automatically on a configurable interval
 - **Per-playlist folders** — each subscription and playlist download gets its own named subfolder
 - **Backfill control** — choose whether to download existing videos or only future ones on subscribe; when backfilling, a review list lets you remove individual videos before any download starts (removed ones are still marked seen, so they won't come back as "new")
 - **Per-subscription mute** — bell-icon toggle on each row (and at create time) silences alerts for that subscription while downloads still run
+- **Check interval in days** — the interval is entered and shown in days (stored internally as minutes); a manual "Check now" button forces an immediate poll
+- **Plex / Jellyfin artwork** — optionally fetch `poster.jpg` + `background.jpg` for each show folder from the first video's thumbnail (toggle in Settings → Metadata, or the 🖼 icon to (re)generate for an existing subscription)
 - **Duplicate protection** — subscribing to a URL you're already subscribed to is rejected up front (no ghost rows); deleting a subscription cascades to its seen-videos and downloads so you can always cleanly re-subscribe
 
 ### Notifications
@@ -37,10 +42,19 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 - **Event suppression** — independently mute: Download completed / Download failed / New video from subscription / Subscription check error
 - **Periodic summary** — configurable digest interval (hours) sent to all enabled channels; trigger manually with "Send summary now"
 
-### Settings (8-tab UI)
+### Appearance
+- **Dark & light themes** — toggle in Settings → Theme; every colour comes from CSS custom properties in `tokens.css`
+- **Animated backgrounds** — "None" plus 15 page backgrounds: 5 WebGL effects (Net, Waves, Cells, Dots, Rings — Vanta/three.js) and 10 lightweight canvas effects (Aurora, Starfield, Grid Pulse, Bubbles, Matrix Rain, Plasma, Mesh Gradient, Constellation, Neon Lines, Snow). Choice persists to `localStorage`.
+- **Built to stay smooth** — three.js is loaded on demand only when a WebGL background is selected; canvas effects share one 30 fps render loop that stops completely when the tab is hidden or a modal covers the page; the backing canvas is resolution-capped on HiDPI displays; `prefers-reduced-motion` paints a single static frame and collapses UI transitions
+
+### Responsive
+- **Phone layout** — below 640px the data tables reflow into stacked cards (each field labelled inline), section headers collapse from a full-width tap target, and queued downloads shrink to a single compact row while the active download keeps its full detail card
+
+### Settings (10-tab UI)
+- **Theme** — light/dark mode + animated background picker (see Appearance above)
 - **Format** — format spec, quality cap, codec preferences, merge container, format sort
 - **Subtitles** — write/embed subs, language selection, auto-subs, format conversion
-- **Metadata & Thumbnails** — embed thumbnail, write info JSON, embed chapters and metadata
+- **Metadata & Thumbnails** — embed thumbnail, write info JSON, embed chapters and metadata, per-show Plex/Jellyfin artwork (`poster.jpg` + `background.jpg`)
 - **Post-processing** — SponsorBlock category removal, ffmpeg path, keep-video toggle
 - **Download** — concurrent downloads (default 1, applied live), concurrent fragments, retries, rate limit, socket timeout, partial resume
 - **Output** — download paths, output template with variable reference, restrict filenames
@@ -159,10 +173,11 @@ MetubePlus/
 │   ├── src/
 │   │   ├── pages/
 │   │   │   ├── Dashboard/       # Main UI — downloads, subscriptions, format picker
-│   │   │   └── Settings/        # 10-tab settings modal (Format → Notifications)
+│   │   │   └── Settings/        # 10-tab settings modal (Theme, Format → Notifications)
 │   │   ├── components/
 │   │   │   ├── Toast/           # In-app toasts + browser Notification API
 │   │   │   └── Skeleton/        # Shimmer loading placeholders
+│   │   ├── theme/               # ThemeContext, Background.tsx, customEffects.ts (16 backgrounds)
 │   │   ├── api/                 # fetch wrappers (downloads, subscriptions, notifications…)
 │   │   ├── ws/                  # Socket.IO singleton + TypeScript event types
 │   │   └── styles/              # tokens.css, global.css, reset.css
@@ -201,6 +216,7 @@ yt-dlp  (YoutubeDL class, not subprocess)
 | `download:completed` | server→client | Download finished |
 | `download:failed` | server→client | Worker exception |
 | `download:canceled` | server→client | User canceled |
+| `downloads:paused` | server→client | Queue paused/resumed (manual "Pause all" or bot-check auto-pause) |
 | `subscription:checked` | server→client | APScheduler poll complete |
 | `subscription:new_video` | server→client | New video detected in playlist |
 | `notification:created` | server→client | Any notification (drives toasts + browser alert) |
@@ -237,18 +253,23 @@ Channels can be individually enabled/disabled and tested with a sample message.
 
 ## Design System
 
-All visual tokens are in `frontend/src/styles/tokens.css`. No Tailwind, no CSS-in-JS — pure CSS Modules only.
+All visual tokens are in `frontend/src/styles/tokens.css`. No Tailwind, no CSS-in-JS — pure CSS Modules only. Colours and elevation are defined per theme (`:root` / `:root[data-theme='light']`); everything else is theme-agnostic.
 
-| Token | Value |
-|-------|-------|
-| Background | `#0A0A0B` |
-| Surface | `#141416` |
-| Accent (purple) | `#7C5CFF` |
-| Success (green) | `#3FD97F` |
-| Warn (amber) | `#FFB84C` |
-| Error (red) | `#FF5C5C` |
-| Font | Plus Jakarta Sans |
-| Motion easing | `cubic-bezier(0.16, 1, 0.3, 1)` |
+| Token | Dark value | Light value |
+|-------|-----------|-------------|
+| `--color-bg` | `#0A0A0B` | `#F5F5F9` |
+| `--color-surface` | `#141416` | `#FFFFFF` |
+| `--color-accent` | `#7C5CFF` | `#5A3FFF` |
+| `--color-success` | `#3FD97F` | `#1E9D54` |
+| `--color-warn` | `#FFB84C` | `#C47A00` |
+| `--color-error` | `#FF5C5C` | `#D6362F` |
+| `--shadow-card` / `--shadow-pop` / `--edge-hi` | panel & modal elevation | (theme-aware) |
+| Font | Plus Jakarta Sans (self-hosted) | |
+| Spacing | 4px grid (`--space-1`…`--space-8`) | |
+| Radii | `--radius-sm` 6px · `--radius-md` 10px · `--radius-lg` 16px | |
+| Motion | easing `cubic-bezier(0.16, 1, 0.3, 1)`; `--dur-fast` 120ms · `--dur-base` 200ms · `--dur-slow` 320ms | |
+
+`prefers-reduced-motion: reduce` collapses all transitions/animations app-wide and freezes the animated background.
 
 ---
 
