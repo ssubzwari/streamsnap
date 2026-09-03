@@ -1451,7 +1451,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               </thead>
               <tbody>
                 {activeDownloads.map((d) => (
-                  <tr key={d.id}>
+                  <tr key={d.id} className={d.status === "queued" ? styles.rowQueued : ""}>
                     <td>
                       <input
                         type="checkbox"

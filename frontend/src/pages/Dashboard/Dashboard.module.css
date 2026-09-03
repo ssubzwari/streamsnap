@@ -1325,6 +1325,63 @@
   .iconBtn {
     padding: var(--space-2);
   }
+
+  /* Queued rows have no progress to show — collapse them to a single
+     compact line (thumb · title · remove) instead of a full card. The
+     actively-downloading row keeps the detailed card. */
+  /* `.table tr` sets display:block above — need the extra specificity here. */
+  .table tr.rowQueued {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .rowQueued td {
+    padding: 0;
+  }
+
+  .rowQueued td:first-child {
+    position: static;
+    order: -1;
+    flex-shrink: 0;
+  }
+
+  .rowQueued td:nth-child(2) {
+    flex: 1;
+    min-width: 0;
+    padding-right: 0;
+  }
+
+  .rowQueued td:last-child {
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  .rowQueued td[data-label],
+  .rowQueued .progressTrack,
+  .rowQueued .percentLabel {
+    display: none;
+  }
+
+  .rowQueued .videoCell {
+    align-items: center;
+  }
+
+  .rowQueued .thumb {
+    width: 40px;
+    height: 23px;
+  }
+
+  .rowQueued .videoTitle {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .rowQueued .rowActions {
+    flex-wrap: nowrap;
+  }
 }
 
 /* ── Playlist review modal ───────────────────────────────────────────────── */
