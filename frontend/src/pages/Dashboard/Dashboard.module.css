@@ -1123,34 +1123,42 @@
     flex: 1 1 100%;
   }
 
+  .inputRow .downloadBtn,
+  .inputRow .subscribeBtn {
+    flex: 1 1 auto;
+  }
+
   .formatRow {
     flex-wrap: wrap;
     gap: var(--space-2);
   }
 
+  .formatRow .dropdownLabel {
+    flex: 1 1 40%;
+  }
+
+  .formatRow .dropdown {
+    width: 100%;
+  }
+
   .main {
     padding: var(--space-4);
   }
-
-  /* Collapse some table columns on narrow screens */
-  table colgroup col:nth-child(4),
-  table colgroup col:nth-child(5) {
-    display: none;
-  }
 }
 
-@media (max-width: 600px) {
+/* ── Phone layout ─────────────────────────────────────────────────────────────
+   The data tables carry too many columns to fit a phone. Below this width they
+   reflow into stacked cards: the header row is hidden and each <td> that opts in
+   (via `data-label`) prints its label inline. Cells without a label (checkbox,
+   video/title block, action buttons) render as plain full-width blocks. */
+@media (max-width: 640px) {
   .header {
     padding: 0 var(--space-3);
   }
 
-  /* Section headers get cramped on phones — drop the inline breakdown. */
-  .sectionSummary {
-    display: none;
-  }
-
   .main {
     padding: var(--space-3);
+    gap: var(--space-4);
   }
 
   .advancedPanel {
@@ -1159,10 +1167,163 @@
 
   .advancedRow {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .advancedInput,
+  .advancedSelect {
+    width: 100%;
   }
 
   .completedToolbar {
     gap: var(--space-1);
+  }
+
+  .pausedBanner {
+    flex-wrap: wrap;
+  }
+
+  .pausedBannerBtn {
+    width: 100%;
+  }
+
+  /* Section header: the collapse toggle becomes a full-width tap target so it
+     can never be squeezed to nothing by the action buttons beside it. */
+  .sectionHeader {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .sectionToggle {
+    flex: 1 1 100%;
+    width: 100%;
+    padding: var(--space-1) 0;
+  }
+
+  .sectionSummary {
+    display: none;
+  }
+
+  .sectionActions {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  .sectionActions button {
+    flex: 1 1 auto;
+  }
+
+  /* Tables → cards */
+  .tableScroll {
+    overflow-x: visible;
+  }
+
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table thead,
+  .table colgroup {
+    display: none;
+  }
+
+  .table tr {
+    position: relative;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    padding: var(--space-3);
+    margin: var(--space-3) 0 0;
+  }
+
+  .table tbody tr:hover td {
+    background: transparent;
+  }
+
+  .table td {
+    border: none !important;
+    padding: var(--space-1) 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* First cell of every row is the select checkbox — pin it to the card's
+     top-right corner so the title leads the card. */
+  .table td:first-child {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    padding: 0;
+    width: auto;
+  }
+
+  /* Leave room for the pinned checkbox on the first labelled/title row. */
+  .table td:nth-child(2) {
+    padding-right: var(--space-5);
+  }
+
+  /* Labelled cells: "LABEL ............ value", value wraps under on overflow */
+  .table td[data-label] {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    flex-wrap: wrap;
+    text-align: right;
+    padding: var(--space-1) 0;
+    min-width: 0;
+  }
+
+  .table td[data-label] + td[data-label] {
+    border-top: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent) !important;
+  }
+
+  .table td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+  }
+
+  .qualityCell {
+    max-width: none;
+    overflow: visible;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .videoCell {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .videoTitle,
+  .videoTitleLink {
+    white-space: normal;
+  }
+
+  .progressTrack {
+    width: 100%;
+  }
+
+  .rowActions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  /* Give action buttons a real touch target on phones */
+  .iconBtn {
+    padding: var(--space-2);
   }
 }
 
