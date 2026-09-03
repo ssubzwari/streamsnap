@@ -1123,14 +1123,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
             >
               Subscribe
             </button>
-            <button
-              className={styles.subscribeBtn}
-              onClick={handlePauseAll}
-              disabled={pausingAll || activeDownloads.length === 0}
-              title="Pause all active and queued downloads"
-            >
-              {pausingAll ? "Pausing…" : "Pause all"}
-            </button>
           </div>
 
           {/* ── Subscribe-only toggles (ignored by the Download button) ── */}
@@ -1392,6 +1384,14 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                 onClick={() => handleClearSelected(selectedActive)}
               >
                 Clear selected
+              </button>
+              <button
+                className={styles.ghostBtn}
+                onClick={handlePauseAll}
+                disabled={pausingAll || activeDownloads.length === 0}
+                title="Pause all active and queued downloads"
+              >
+                {pausingAll ? "Pausing…" : "Pause all"}
               </button>
               <button
                 className={styles.ghostBtn}
