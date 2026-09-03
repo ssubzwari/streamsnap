@@ -138,6 +138,10 @@ export async function getDownloadsStatus(): Promise<DownloadsStatus> {
   return apiFetch<DownloadsStatus>("/downloads/status");
 }
 
+export async function pauseAllDownloads(): Promise<DownloadsStatus> {
+  return apiFetch<DownloadsStatus>("/downloads/pause-all", { method: "POST" });
+}
+
 export async function resumeIncompleteDownloads(): Promise<{
   resumed: number;
   paused: boolean;

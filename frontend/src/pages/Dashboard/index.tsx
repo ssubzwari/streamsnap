@@ -10,6 +10,7 @@ import {
   listDownloads,
   listGroupedDownloads,
   type PlaylistEntry,
+  pauseAllDownloads,
   previewPlaylist,
   resumeIncompleteDownloads,
   retryDownload,
@@ -405,6 +406,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [playlistLoading, setPlaylistLoading] = useState(false);
   const [resumingStalled, setResumingStalled] = useState(false);
+  const [pausingAll, setPausingAll] = useState(false);
   const [downloadsPaused, setDownloadsPaused] = useState<{
     paused: boolean;
     reason: string | null;
@@ -797,6 +799,18 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     }
   };
 
+  const handlePauseAll = async () => {
+    setPausingAll(true);
+    try {
+      const res = await pauseAllDownloads();
+      setDownloadsPaused({ paused: res.paused, reason: null });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPausingAll(false);
+    }
+  };
+
   const handleRetryOne = async (id: number) => {
     try {
       const info = await retryDownload(id);
@@ -1108,6 +1122,14 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               disabled={isSubmitting || !url.trim()}
             >
               Subscribe
+            </button>
+            <button
+              className={styles.subscribeBtn}
+              onClick={handlePauseAll}
+              disabled={pausingAll || activeDownloads.length === 0}
+              title="Pause all active and queued downloads"
+            >
+              {pausingAll ? "Pausing…" : "Pause all"}
             </button>
           </div>
 
