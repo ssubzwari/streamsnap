@@ -361,7 +361,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     subscriptions: boolean;
   }>(() => {
     try {
-      const raw = localStorage.getItem("metubeplus.openSections");
+      const raw = localStorage.getItem("streamsnap.openSections");
       if (raw) return JSON.parse(raw);
     } catch {}
     return { downloading: true, completed: true, subscriptions: true };
@@ -370,7 +370,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   useEffect(() => {
     try {
       localStorage.setItem(
-        "metubeplus.openSections",
+        "streamsnap.openSections",
         JSON.stringify(openSections),
       );
     } catch {}
@@ -384,7 +384,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   // Persisted to localStorage.
   const [closedSubGroups, setClosedSubGroups] = useState<Set<number>>(() => {
     try {
-      const raw = localStorage.getItem("metubeplus.closedSubGroups");
+      const raw = localStorage.getItem("streamsnap.closedSubGroups");
       if (raw) return new Set(JSON.parse(raw));
     } catch {}
     return new Set();
@@ -393,7 +393,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   useEffect(() => {
     try {
       localStorage.setItem(
-        "metubeplus.closedSubGroups",
+        "streamsnap.closedSubGroups",
         JSON.stringify(Array.from(closedSubGroups)),
       );
     } catch {}

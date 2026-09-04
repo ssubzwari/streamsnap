@@ -20,7 +20,7 @@ interface ThemeContextValue extends ThemeState {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-const STORAGE_KEY = "metubeplus.theme.v1";
+const STORAGE_KEY = "streamsnap.theme.v1";
 
 function readStored(): ThemeState {
   if (typeof window === "undefined") return DEFAULT_THEME;

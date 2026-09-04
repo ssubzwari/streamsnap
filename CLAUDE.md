@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-MetubePlus is a self-hosted video downloader web app wrapping [yt-dlp](https://github.com/yt-dlp/yt-dlp). It exposes yt-dlp's full configuration surface, supports playlist subscriptions with automatic polling, and delivers real-time download progress and notifications over WebSockets.
+StreamSnap is a self-hosted video downloader web app wrapping [yt-dlp](https://github.com/yt-dlp/yt-dlp). It exposes yt-dlp's full configuration surface, supports playlist subscriptions with automatic polling, and delivers real-time download progress and notifications over WebSockets.
 
 **Prerequisites (must be on PATH):** Python 3.11+, Node 20+, `yt-dlp`, `ffmpeg`
 
@@ -85,8 +85,8 @@ yt-dlp  (YoutubeDL class, not subprocess)
 | `frontend/src/theme/ThemeContext.tsx` | `mode` (dark/light) + `background` id, persisted to `localStorage` |
 | `frontend/src/theme/Background.tsx` | Mounts the chosen background; lazy-loads three.js only for Vanta effects; `paused` prop stops it when a modal covers the page |
 | `frontend/src/theme/customEffects.ts` | 10 dependency-free canvas backgrounds on a shared 30fps rAF driver (auto-stops on tab-hidden / pause / reduced-motion) |
-| `frontend/src/ui/UiPrefsContext.tsx` | Per-browser UI prefs — `statsMeter` toggle + dashboard `sectionOrder`, persisted to `localStorage` (`metubeplus.ui.v1`) |
-| `frontend/src/components/StatsMeter/` | Collapsible + drag-resizable download-throughput graph (`resize: vertical`, height persisted to `metubeplus.statsMeter.h`); samples combined speed once/sec into a 60-point SVG sparkline shown full-size in the body and mini in the collapsed header |
+| `frontend/src/ui/UiPrefsContext.tsx` | Per-browser UI prefs — `statsMeter` toggle + dashboard `sectionOrder`, persisted to `localStorage` (`streamsnap.ui.v1`) |
+| `frontend/src/components/StatsMeter/` | Collapsible + drag-resizable download-throughput graph (`resize: vertical`, height persisted to `streamsnap.statsMeter.h`); samples combined speed once/sec into a 60-point SVG sparkline shown full-size in the body and mini in the collapsed header |
 
 ## WebSocket Events
 

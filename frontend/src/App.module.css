@@ -27,9 +27,9 @@
   flex-shrink: 0;
 }
 
-.brandPlus {
+.brandAccent {
   color: var(--color-accent);
-  margin-left: 2px;
+  margin-left: 1px;
 }
 
 /* ── Tab pills ── */

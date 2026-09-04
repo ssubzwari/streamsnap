@@ -116,7 +116,7 @@ async def test_channel(
         raise HTTPException(status_code=400, detail=f"Unknown channel kind: {channel.kind}")
     cfg = _json.loads(channel.config_json or "{}")
     try:
-        await sender(cfg, "MetubePlus test notification", "If you see this, the channel is working.")
+        await sender(cfg, "StreamSnap test notification", "If you see this, the channel is working.")
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 

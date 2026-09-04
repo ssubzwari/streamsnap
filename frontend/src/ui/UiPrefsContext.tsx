@@ -35,7 +35,7 @@ const DEFAULTS: UiPrefs = {
   sectionOrder: DEFAULT_SECTION_ORDER,
 };
 
-const STORAGE_KEY = "metubeplus.ui.v1";
+const STORAGE_KEY = "streamsnap.ui.v1";
 
 interface UiPrefsValue extends UiPrefs {
   setStatsMeter: (on: boolean) => void;
