@@ -50,8 +50,12 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 ### Responsive
 - **Phone layout** — below 640px the data tables reflow into stacked cards (each field labelled inline), section headers collapse from a full-width tap target, and queued downloads shrink to a single compact row while the active download keeps its full detail card
 
+### Customisable dashboard
+- **Download activity meter** — a collapsible panel above the download list with a 60-second throughput graph and a legend of live stats (current / peak / average speed, downloading, queued, completed bytes). Toggle it on/off in Settings → Theme → Interface.
+- **Rearrangeable sections** — the ▲▼ buttons in each section header move the Advanced Options / Downloading / Completed / Subscriptions blocks up and down; the order persists per browser. "Reset section order" in Settings → Theme restores the default.
+
 ### Settings (10-tab UI)
-- **Theme** — light/dark mode + animated background picker (see Appearance above)
+- **Theme** — light/dark mode, animated background picker (see Appearance above), and Interface prefs (download activity meter, reset dashboard section order)
 - **Format** — format spec, quality cap, codec preferences, merge container, format sort
 - **Subtitles** — write/embed subs, language selection, auto-subs, format conversion
 - **Metadata & Thumbnails** — embed thumbnail, write info JSON, embed chapters and metadata, per-show Plex/Jellyfin artwork (`poster.jpg` + `background.jpg`)

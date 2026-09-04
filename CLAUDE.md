@@ -85,6 +85,8 @@ yt-dlp  (YoutubeDL class, not subprocess)
 | `frontend/src/theme/ThemeContext.tsx` | `mode` (dark/light) + `background` id, persisted to `localStorage` |
 | `frontend/src/theme/Background.tsx` | Mounts the chosen background; lazy-loads three.js only for Vanta effects; `paused` prop stops it when a modal covers the page |
 | `frontend/src/theme/customEffects.ts` | 10 dependency-free canvas backgrounds on a shared 30fps rAF driver (auto-stops on tab-hidden / pause / reduced-motion) |
+| `frontend/src/ui/UiPrefsContext.tsx` | Per-browser UI prefs — `statsMeter` toggle + dashboard `sectionOrder`, persisted to `localStorage` (`metubeplus.ui.v1`) |
+| `frontend/src/components/StatsMeter/` | Collapsible download-throughput graph + stat legend; samples combined speed once/sec into a 60-point SVG sparkline |
 
 ## WebSocket Events
 
@@ -137,7 +139,7 @@ Tab order: **Theme, Format, Subtitles, Metadata, Post-processing, Download, Outp
 
 | Tab | Surface |
 |---|---|
-| **Theme** | page mode (dark/light) + animated background picker (None / 5 Vanta WebGL / 10 canvas effects); persisted to `localStorage` via `ThemeContext` |
+| **Theme** | page mode (dark/light) + animated background picker (None / 5 Vanta WebGL / 10 canvas effects) via `ThemeContext`; **Interface** section — download activity meter toggle + reset dashboard section order (`useUiPrefs`) |
 | **Format** | format spec field + presets, quality cap (height), prefer codec (vp9/av1/h264), audio codec (opus/aac/m4a), merge container (mp4/mkv/webm), `--prefer-free-formats`, `--format-sort` |
 | **Subtitles** | write subs, sub langs (multi-select), write auto subs, embed subs, convert subs format |
 | **Metadata & Thumbnails** | embed thumbnail, write thumbnail, write info json, write description, embed metadata, embed chapters, subscription artwork (`poster.jpg` + `background.jpg` per show) |
@@ -171,6 +173,7 @@ Tokens live in `frontend/src/styles/tokens.css`. All values must come from token
 - **Motion:** Always `cubic-bezier(0.16, 1, 0.3, 1)` with `--dur-fast` (120ms), `--dur-base` (200ms), or `--dur-slow` (320ms). `global.css` collapses all motion under `prefers-reduced-motion: reduce`.
 - Styling: CSS Modules only — no Tailwind, no CSS-in-JS
 - **Responsive:** `Dashboard.module.css` breakpoints at 900px (input/format rows wrap) and 640px (tables → stacked cards; `data-label` on a `<td>` becomes its inline label; `.rowQueued` collapses queued downloads to one line). Body must never scroll horizontally.
+- **Dashboard section order:** the four rearrangeable blocks (advanced / downloading / completed / subscriptions) are reordered purely by CSS flex `order` — each gets `style={{ order: sectionOrder.indexOf(id) + 1 }}`; fixed items above them stay at the default `order: 0`. `ReorderControls` in each header calls `moveSection` from `useUiPrefs`.
 
 ## Animated Backgrounds (`frontend/src/theme/`)
 
