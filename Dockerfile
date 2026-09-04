@@ -44,7 +44,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Runtime environment
 ENV DOWNLOAD_DIR=/downloads
-ENV DB_URL=sqlite+aiosqlite:////data/metubeplus.db
+ENV DB_URL=sqlite+aiosqlite:////data/streamsnap.db
 ENV YTDLP_DIR=/ytdlp
 ENV YTDLP_SEED_DIR=/opt/ytdlp-seed
 

@@ -303,7 +303,7 @@ def _backup_dir() -> pathlib.Path:
 
 def _db_path_from_url(url: str) -> pathlib.Path:
     """Extract the on-disk file path from a sqlite/aiosqlite DB_URL."""
-    # sqlite+aiosqlite:///./metubeplus.db → ./metubeplus.db
+    # sqlite+aiosqlite:///./streamsnap.db → ./streamsnap.db
     # sqlite+aiosqlite:////abs/path.db    → /abs/path.db
     parsed = urlparse(url)
     raw = parsed.path or url.split("///", 1)[-1]
@@ -320,7 +320,12 @@ _SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 async def list_db_backups() -> dict:
     """List existing database backups in the backup directory."""
     backups = []
-    for p in sorted(_backup_dir().glob("metubeplus-*.db"), reverse=True):
+    # New backups are "streamsnap-*.db"; keep listing legacy "metubeplus-*.db" too.
+    files = {
+        *_backup_dir().glob("streamsnap-*.db"),
+        *_backup_dir().glob("metubeplus-*.db"),
+    }
+    for p in sorted(files, key=lambda p: p.name, reverse=True):
         try:
             stat = p.stat()
             backups.append({
@@ -348,7 +353,7 @@ async def backup_db() -> dict:
         raise HTTPException(status_code=404, detail=f"Database file not found at {src}")
 
     ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-    dst = _backup_dir() / f"metubeplus-{ts}.db"
+    dst = _backup_dir() / f"streamsnap-{ts}.db"
 
     def _do_backup() -> None:
         # Close and reopen through sqlite3 APIs so we can use .backup()

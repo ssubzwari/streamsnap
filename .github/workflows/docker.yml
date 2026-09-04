@@ -19,7 +19,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}   # ssubzwari/metubeplus
+  IMAGE_NAME: ${{ github.repository }}   # ssubzwari/streamsnap (repo slug — rename the GitHub repo to match)
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:

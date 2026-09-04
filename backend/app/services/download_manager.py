@@ -512,7 +512,7 @@ class DownloadManager:
         from app.services.notifications import create_notification
 
         reason = (
-            "YouTube is asking MetubePlus to confirm it's not a bot. "
+            "YouTube is asking StreamSnap to confirm it's not a bot. "
             "Add cookies in Settings → Auth, then resume."
         )
         await self.pause(reason)

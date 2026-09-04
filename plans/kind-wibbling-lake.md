@@ -1,17 +1,17 @@
-# MetubePlus — Implementation Plan
+# StreamSnap — Implementation Plan
 
 ## Context
 
-**Why this work is being done.** The user wants a premium, minimalist web application called "MetubePlus" that wraps [yt-dlp](https://github.com/yt-dlp/yt-dlp) with three major capabilities:
+**Why this work is being done.** The user wants a premium, minimalist web application called "StreamSnap" that wraps [yt-dlp](https://github.com/yt-dlp/yt-dlp) with three major capabilities:
 
 1. A rich UI that exposes **all** of yt-dlp's meaningful feature surface (format selection, codec filters, subtitles, metadata, thumbnails, post-processing, rate-limiting).
 2. **Playlist subscriptions** — paste a playlist URL once, have the backend poll it on a schedule and auto-download only the new videos since last check.
 3. **Real-time notifications** pushed over WebSockets when new videos are detected, downloads start, or downloads complete.
 
-The design is inspired by [alexta69/metube](https://github.com/alexta69/metube), but MetubePlus differs in three material ways:
-- MeTube intentionally restricts its UI-visible config; MetubePlus exposes the full yt-dlp surface.
-- MeTube has subscription polling but **no notification layer** — it silently queues. MetubePlus treats notifications as a first-class feature.
-- MetubePlus ships a React + Vite + TypeScript frontend with a premium design system, not MeTube's Angular UI.
+The design is inspired by [alexta69/metube](https://github.com/alexta69/metube), but StreamSnap differs in three material ways:
+- MeTube intentionally restricts its UI-visible config; StreamSnap exposes the full yt-dlp surface.
+- MeTube has subscription polling but **no notification layer** — it silently queues. StreamSnap treats notifications as a first-class feature.
+- StreamSnap ships a React + Vite + TypeScript frontend with a premium design system, not MeTube's Angular UI.
 
 **State of the working directory.** The project root is currently empty except for two Windows `.url` shortcut files pointing at the two upstream reference projects. This is a greenfield scaffold.
 
@@ -22,7 +22,7 @@ From upstream exploration (both repos fetched via WebFetch):
 **MeTube architecture** (for reference, not literal copying):
 - Backend: aiohttp + python-socketio, yt-dlp imported as a library
 - Downloads run in a separate `multiprocessing.Process`; progress streams through a `multiprocessing.Queue` and is broadcast over WebSocket
-- State persists as JSON files via an `AtomicJsonStore` (MetubePlus will use **SQLite** instead, per user spec)
+- State persists as JSON files via an `AtomicJsonStore` (StreamSnap will use **SQLite** instead, per user spec)
 - WebSocket events: `added`, `updated`, `completed`, `canceled`, `cleared`
 - Key files to borrow patterns from: `app/main.py`, `app/ytdl.py`, `app/subscriptions.py`, `app/dl_formats.py`
 
@@ -87,7 +87,7 @@ From upstream exploration (both repos fetched via WebFetch):
 ## Planned Project Layout
 
 ```
-MetubePlus/
+StreamSnap/
 ├── backend/
 │   ├── pyproject.toml
 │   ├── alembic.ini                 # if we want migrations, otherwise SQLAlchemy create_all
@@ -171,7 +171,7 @@ MetubePlus/
 
 ## WebSocket Event Model
 
-Inspired by MeTube's `added/updated/completed/canceled` plus MetubePlus-specific additions:
+Inspired by MeTube's `added/updated/completed/canceled` plus StreamSnap-specific additions:
 
 | Event | Payload | When |
 |---|---|---|
@@ -181,7 +181,7 @@ Inspired by MeTube's `added/updated/completed/canceled` plus MetubePlus-specific
 | `download:failed` | { id, error } | exception in worker |
 | `download:canceled` | { id } | user cancels |
 | `subscription:checked` | { id, new_count, last_checked_at } | APScheduler job completes |
-| `subscription:new_video` | { subscription_id, video } | **MetubePlus-specific** — fires before the auto-download enqueues |
+| `subscription:new_video` | { subscription_id, video } | **StreamSnap-specific** — fires before the auto-download enqueues |
 | `notification:created` | NotificationInfo | any notification — drives toast UI |
 
 ## yt-dlp Configuration Surface (Settings UI tabs)

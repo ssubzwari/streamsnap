@@ -47,7 +47,7 @@ const Chevron = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-const HEIGHT_KEY = "metubeplus.statsMeter.h";
+const HEIGHT_KEY = "streamsnap.statsMeter.h";
 const MIN_H = 40;
 const MAX_H = 260;
 
@@ -60,7 +60,7 @@ export default function StatsMeter({
 }: StatsMeterProps) {
   const [open, setOpen] = useState(() => {
     try {
-      return localStorage.getItem("metubeplus.statsMeter.open") !== "0";
+      return localStorage.getItem("streamsnap.statsMeter.open") !== "0";
     } catch {
       return true;
     }
@@ -68,7 +68,7 @@ export default function StatsMeter({
 
   useEffect(() => {
     try {
-      localStorage.setItem("metubeplus.statsMeter.open", open ? "1" : "0");
+      localStorage.setItem("streamsnap.statsMeter.open", open ? "1" : "0");
     } catch {
       /* ignore */
     }

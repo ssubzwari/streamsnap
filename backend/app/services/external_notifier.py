@@ -255,4 +255,4 @@ async def send_summary() -> None:
 
     lines = [f"• {n.title}" + (f": {n.body}" if n.body else "") for n in notifs]
     body = "\n".join(lines)
-    await dispatch("summary", f"MetubePlus summary — {len(notifs)} notification(s)", body, None)
+    await dispatch("summary", f"StreamSnap summary — {len(notifs)} notification(s)", body, None)

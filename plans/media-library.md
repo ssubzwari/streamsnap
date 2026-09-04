@@ -1,7 +1,7 @@
 # Plan: Plex-Inspired Media Library Tab
 
 ## Context
-User wants MetubePlus to feel like Plex — a proper media library, not just a download queue. Two new capabilities:
+User wants StreamSnap to feel like Plex — a proper media library, not just a download queue. Two new capabilities:
 1. Tag downloads as Movies / TV / Music at submission time
 2. A "Media" tab showing completed downloads as a poster-card grid, filterable by category
 

@@ -31,7 +31,7 @@ export default function App() {
       <div className={styles.shell}>
         <nav className={styles.topNav}>
           <span className={styles.brand}>
-            MeTube<span className={styles.brandPlus}>Plus</span>
+            Stream<span className={styles.brandAccent}>Snap</span>
           </span>
 
 

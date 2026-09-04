@@ -1,8 +1,8 @@
-# MetubePlus
+# StreamSnap
 
 A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp). Download videos and audio from YouTube and 1000+ other sites, subscribe to playlists with automatic polling, and watch real-time download progress in the browser.
 
-[![Build & Push Docker Image](https://github.com/ssubzwari/metubeplus/actions/workflows/docker.yml/badge.svg)](https://github.com/ssubzwari/metubeplus/actions/workflows/docker.yml)
+[![Build & Push Docker Image](https://github.com/ssubzwari/streamsnap/actions/workflows/docker.yml/badge.svg)](https://github.com/ssubzwari/streamsnap/actions/workflows/docker.yml)
 
 ---
 
@@ -86,8 +86,8 @@ docker compose up -d
 The `docker-compose.yml` pulls from GitHub Container Registry automatically. Three independent mounts keep data isolated:
 
 - `${DOWNLOAD_DIR:-./downloads}` → `/downloads` — bind-mount for finished files
-- `metubeplus-data` (named volume) → `/data` — SQLite database and app state
-- `metubeplus-ytdlp` (named volume) → `/ytdlp` — yt-dlp install, so in-app updates persist across container restarts
+- `streamsnap-data` (named volume) → `/data` — SQLite database and app state
+- `streamsnap-ytdlp` (named volume) → `/ytdlp` — yt-dlp install, so in-app updates persist across container restarts
 
 ```bash
 # Pin a specific build
@@ -97,7 +97,27 @@ IMAGE_TAG=sha-04bdf92 docker compose up -d
 DOWNLOAD_DIR=/media/nas/downloads docker compose up -d
 ```
 
-Image: `ghcr.io/ssubzwari/metubeplus:latest`
+Image: `ghcr.io/ssubzwari/streamsnap:latest`
+
+### Migrating from MetubePlus
+
+The project was renamed. The Docker volumes, DB file, and image path changed from `metubeplus*` to `streamsnap*`. To carry an existing deployment over:
+
+```bash
+docker compose down
+
+# copy the old named volumes into the new ones
+docker volume create streamsnap-data && docker volume create streamsnap-ytdlp
+docker run --rm -v metubeplus-data:/from -v streamsnap-data:/to alpine sh -c 'cp -a /from/. /to/'
+docker run --rm -v metubeplus-ytdlp:/from -v streamsnap-ytdlp:/to alpine sh -c 'cp -a /from/. /to/'
+
+# rename the DB file inside the new data volume
+docker run --rm -v streamsnap-data:/data alpine mv /data/metubeplus.db /data/streamsnap.db
+
+docker compose up -d
+```
+
+Browser preferences (theme, layout) migrate automatically on first load. Old `metubeplus-*.db` backups stay listed in Settings → Advanced.
 
 ---
 
@@ -146,7 +166,7 @@ Open **http://localhost:5173** in your browser.
 ## Project Structure
 
 ```
-MetubePlus/
+StreamSnap/
 ├── .github/
 │   └── workflows/
 │       └── docker.yml           # Build & push to ghcr.io on push to main
@@ -234,7 +254,7 @@ yt-dlp  (YoutubeDL class, not subprocess)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DB_URL` | `sqlite+aiosqlite:///./metubeplus.db` | Database path |
+| `DB_URL` | `sqlite+aiosqlite:///./streamsnap.db` | Database path |
 | `DOWNLOAD_DIR` | `./downloads` | Root download folder |
 | `MAX_CONCURRENT_DOWNLOADS` | `1` | Legacy — set "Concurrent Downloads" in Settings → Download instead |
 | `IMAGE_TAG` | `latest` | Docker image tag (compose only) |
