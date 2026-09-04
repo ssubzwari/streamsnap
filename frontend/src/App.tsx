@@ -9,6 +9,28 @@ import { UiPrefsProvider } from "@/ui/UiPrefsContext";
 
 import styles from "./App.module.css";
 
+// StreamSnap mark — a hex "aperture" ring around a play triangle. Ring picks
+// up the theme accent; the triangle inherits the wordmark's text colour.
+const LogoMark = () => (
+  <svg
+    width="19"
+    height="19"
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path
+      d="M12 2.6 20.1 7.3V16.7L12 21.4 3.9 16.7V7.3Z"
+      fill="none"
+      stroke="var(--color-accent)"
+      strokeWidth="2.1"
+      strokeLinejoin="round"
+    />
+    <path d="M10 8.6 15.6 12 10 15.4Z" fill="currentColor" />
+  </svg>
+);
+
 const GearIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
@@ -31,7 +53,8 @@ export default function App() {
       <div className={styles.shell}>
         <nav className={styles.topNav}>
           <span className={styles.brand}>
-            Stream<span className={styles.brandAccent}>Snap</span>
+            <LogoMark />
+            <span>Stream<span className={styles.brandAccent}>Snap</span></span>
           </span>
 
 

@@ -20,10 +20,18 @@
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--text-base);
   font-weight: var(--weight-bold);
   color: var(--color-text);
   letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+
+.brand svg {
+  display: block;
   flex-shrink: 0;
 }
 
