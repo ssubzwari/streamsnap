@@ -532,9 +532,10 @@
   box-shadow: var(--shadow-card), var(--edge-hi);
 }
 
-/* Wraps the table so overflow scrolls horizontally instead of clipping
-   columns. The long format_spec string in the Quality column was pushing
-   rightmost columns (Speed / ETA / Actions) off-screen. */
+/* The tables use `table-layout: fixed` (see .table) with a <colgroup>, so
+   columns hold their assigned widths and long cell text ellipsizes instead
+   of widening the table. This wrapper is just a safety net — it should never
+   actually need to scroll. */
 .tableScroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -668,6 +669,13 @@
   width: 100%;
   border-collapse: collapse;
   font-size: var(--text-sm);
+  table-layout: fixed;
+}
+
+/* Fixed layout means an over-long value (a raw format_spec, a long URL)
+   would spill its cell — clip it and let the inner element ellipsize. */
+.table td {
+  overflow: hidden;
 }
 
 .table thead tr {
@@ -683,6 +691,8 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .table td {
@@ -733,6 +743,8 @@
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
 

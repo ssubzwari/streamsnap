@@ -1514,12 +1514,12 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
             <div className={styles.tableScroll}><table className={styles.table}>
               <colgroup>
                 <col style={{ width: "36px" }} />
-                <col style={{ width: "100%" }} />
-                <col style={{ width: "80px" }} />
-                <col style={{ width: "80px" }} />
-                <col style={{ width: "120px" }} />
-                <col style={{ width: "80px" }} />
-                <col style={{ width: "40px" }} />
+                <col style={{ width: "auto" }} />
+                <col style={{ width: "60px" }} />
+                <col style={{ width: "96px" }} />
+                <col style={{ width: "92px" }} />
+                <col style={{ width: "52px" }} />
+                <col style={{ width: "44px" }} />
               </colgroup>
               <thead>
                 <tr>
@@ -1699,11 +1699,11 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                         <table className={styles.table}>
                           <colgroup>
                             <col style={{ width: "36px" }} />
-                            <col style={{ width: "100%" }} />
-                            <col style={{ width: "80px" }} />
-                            <col style={{ width: "100px" }} />
-                            <col style={{ width: "150px" }} />
-                            <col style={{ width: "200px" }} />
+                            <col style={{ width: "auto" }} />
+                            <col style={{ width: "64px" }} />
+                            <col style={{ width: "92px" }} />
+                            <col style={{ width: "128px" }} />
+                            <col style={{ width: "148px" }} />
                           </colgroup>
                           <thead>
                             <tr>
@@ -1834,11 +1834,11 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                       <table className={styles.table}>
                         <colgroup>
                           <col style={{ width: "36px" }} />
-                          <col style={{ width: "100%" }} />
-                          <col style={{ width: "80px" }} />
-                          <col style={{ width: "100px" }} />
-                          <col style={{ width: "150px" }} />
-                          <col style={{ width: "200px" }} />
+                          <col style={{ width: "auto" }} />
+                          <col style={{ width: "64px" }} />
+                          <col style={{ width: "92px" }} />
+                          <col style={{ width: "128px" }} />
+                          <col style={{ width: "148px" }} />
                         </colgroup>
                         <thead>
                           <tr>
@@ -2066,12 +2066,12 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
             <div className={styles.tableScroll}><table className={styles.table}>
               <colgroup>
                 <col style={{ width: "36px" }} />
-                <col style={{ width: "28%" }} />
-                <col style={{ width: "28%" }} />
-                <col style={{ width: "100px" }} />
-                <col style={{ width: "150px" }} />
-                <col style={{ width: "80px" }} />
-                <col style={{ width: "200px" }} />
+                <col style={{ width: "auto" }} />
+                <col style={{ width: "168px" }} />
+                <col style={{ width: "92px" }} />
+                <col style={{ width: "128px" }} />
+                <col style={{ width: "78px" }} />
+                <col style={{ width: "176px" }} />
               </colgroup>
               <thead>
                 <tr>
