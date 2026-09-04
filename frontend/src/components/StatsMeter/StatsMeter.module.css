@@ -33,13 +33,32 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   margin: 0;
+  flex-shrink: 0;
+}
+
+/* Sparkline shown inside the collapsed header bar (desktop + mobile). */
+.miniChart {
+  flex: 1 1 auto;
+  min-width: 24px;
+  max-width: 260px;
+  height: 20px;
+  margin: 0 var(--space-2);
+  opacity: 0.85;
 }
 
 .headerCur {
   margin-left: auto;
+  flex-shrink: 0;
   font-size: var(--text-xs);
   color: var(--color-success);
   font-variant-numeric: tabular-nums;
+}
+
+/* When the mini chart is present it already eats the free space, so the
+   current-speed value sits right after it rather than being pushed to the
+   far edge. */
+.miniChart + .headerCur {
+  margin-left: 0;
 }
 
 .body {
@@ -49,14 +68,46 @@
   gap: var(--space-2);
 }
 
+/* Resizable shell — drag the bottom edge to grow the graph (desktop). */
+.chartResize {
+  position: relative;
+  height: 52px;
+  min-height: 40px;
+  max-height: 260px;
+  resize: vertical;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+
+/* Visible grab hint at the bottom edge (the native resize grip alone is easy
+   to miss). Non-interactive so it never blocks the real resize handle. */
+.chartResize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 26px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: var(--color-text-muted);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.chartResize:hover::after {
+  opacity: 0.6;
+}
+
 .chartWrap {
   position: relative;
+  height: 100%;
 }
 
 .chart {
   display: block;
   width: 100%;
-  height: 52px;
+  height: 100%;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -136,6 +187,21 @@
   }
 
   .sep {
+    display: none;
+  }
+
+  .miniChart {
+    max-width: 140px;
+  }
+
+  /* No drag-resize on touch — force the default height even if a desktop
+     session left a taller value in the inline style. */
+  .chartResize {
+    resize: none;
+    height: 52px !important;
+  }
+
+  .chartResize::after {
     display: none;
   }
 }

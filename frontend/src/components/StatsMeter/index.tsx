@@ -47,6 +47,10 @@ const Chevron = ({ open }: { open: boolean }) => (
   </svg>
 );
 
+const HEIGHT_KEY = "metubeplus.statsMeter.h";
+const MIN_H = 40;
+const MAX_H = 260;
+
 export default function StatsMeter({
   speedBps,
   downloading,
@@ -68,6 +72,39 @@ export default function StatsMeter({
     } catch {
       /* ignore */
     }
+  }, [open]);
+
+  // User-adjustable chart height (desktop only — the CSS drops the resize
+  // affordance on narrow screens). Persisted so it sticks across reloads.
+  const resizeRef = useRef<HTMLDivElement>(null);
+  const [chartH] = useState(() => {
+    try {
+      const v = parseInt(localStorage.getItem(HEIGHT_KEY) ?? "", 10);
+      return Number.isFinite(v) ? Math.min(MAX_H, Math.max(MIN_H, v)) : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  useEffect(() => {
+    const el = resizeRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const ro = new ResizeObserver(() => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        try {
+          localStorage.setItem(HEIGHT_KEY, String(Math.round(el.clientHeight)));
+        } catch {
+          /* ignore */
+        }
+      }, 300);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      clearTimeout(t);
+    };
   }, [open]);
 
   const [history, setHistory] = useState<number[]>(() =>
@@ -131,24 +168,41 @@ export default function StatsMeter({
       >
         <Chevron open={open} />
         <h2 className={styles.title}>Download activity</h2>
+        {!open && (
+          <svg
+            className={styles.miniChart}
+            viewBox="0 0 100 32"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <path d={area} className={styles.area} />
+            <path d={line} className={styles.line} />
+          </svg>
+        )}
         <span className={styles.headerCur}>{fmtBps(speedBps)}</span>
       </button>
 
       {open && (
         <div className={styles.body}>
-          <div className={styles.chartWrap}>
-            <svg
-              className={styles.chart}
-              viewBox="0 0 100 32"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              <line x1="0" y1="16" x2="100" y2="16" className={styles.grid} />
-              <path d={area} className={styles.area} />
-              <path d={line} className={styles.line} />
-              {dot && <circle cx={dot.x} cy={dot.y} r="1.6" className={styles.dot} />}
-            </svg>
-            {scaleLabel && <span className={styles.axisMax}>{scaleLabel}</span>}
+          <div
+            ref={resizeRef}
+            className={styles.chartResize}
+            style={chartH ? { height: chartH } : undefined}
+          >
+            <div className={styles.chartWrap}>
+              <svg
+                className={styles.chart}
+                viewBox="0 0 100 32"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <line x1="0" y1="16" x2="100" y2="16" className={styles.grid} />
+                <path d={area} className={styles.area} />
+                <path d={line} className={styles.line} />
+                {dot && <circle cx={dot.x} cy={dot.y} r="1.6" className={styles.dot} />}
+              </svg>
+              {scaleLabel && <span className={styles.axisMax}>{scaleLabel}</span>}
+            </div>
           </div>
 
           <div className={styles.stats}>

@@ -86,7 +86,7 @@ yt-dlp  (YoutubeDL class, not subprocess)
 | `frontend/src/theme/Background.tsx` | Mounts the chosen background; lazy-loads three.js only for Vanta effects; `paused` prop stops it when a modal covers the page |
 | `frontend/src/theme/customEffects.ts` | 10 dependency-free canvas backgrounds on a shared 30fps rAF driver (auto-stops on tab-hidden / pause / reduced-motion) |
 | `frontend/src/ui/UiPrefsContext.tsx` | Per-browser UI prefs — `statsMeter` toggle + dashboard `sectionOrder`, persisted to `localStorage` (`metubeplus.ui.v1`) |
-| `frontend/src/components/StatsMeter/` | Collapsible download-throughput graph + stat legend; samples combined speed once/sec into a 60-point SVG sparkline |
+| `frontend/src/components/StatsMeter/` | Collapsible + drag-resizable download-throughput graph (`resize: vertical`, height persisted to `metubeplus.statsMeter.h`); samples combined speed once/sec into a 60-point SVG sparkline shown full-size in the body and mini in the collapsed header |
 
 ## WebSocket Events
 

@@ -51,7 +51,8 @@ A self-hosted video downloader web app powered by [yt-dlp](https://github.com/yt
 - **Phone layout** — below 640px the data tables reflow into stacked cards (each field labelled inline), section headers collapse from a full-width tap target, and queued downloads shrink to a single compact row while the active download keeps its full detail card
 
 ### Customisable dashboard
-- **Download activity meter** — a collapsible panel above the download list with a 60-second throughput graph and a legend of live stats (current / peak / average speed, downloading, queued, completed bytes). Toggle it on/off in Settings → Theme → Interface.
+- **Download activity meter** — a collapsible panel above the download list with a 60-second throughput graph (auto-scaled to the recent peak) and a one-line stat legend (current / peak / average speed, downloading, queued, completed bytes). Drag the bottom edge to grow the graph on desktop (height persists); when collapsed it still shows a sparkline in the header bar. Toggle it on/off in Settings → Theme → Interface.
+- **In-progress on top** — the Downloading list keeps actively-downloading items above the queued ones.
 - **Rearrangeable sections** — the ▲▼ buttons in each section header move the Advanced Options / Downloading / Completed / Subscriptions blocks up and down; the order persists per browser. "Reset section order" in Settings → Theme restores the default.
 
 ### Settings (10-tab UI)

@@ -580,9 +580,14 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   }, []);
 
   // ── Derived stats ─────────────────────────────────────────────────────────
-  const activeDownloads = downloads.filter(
-    (d) => d.status === "queued" || d.status === "downloading",
-  );
+  // In-progress downloads float to the top, queued keep their order below.
+  // (Array.prototype.sort is stable, so same-status rows stay put.)
+  const activeDownloads = downloads
+    .filter((d) => d.status === "queued" || d.status === "downloading")
+    .sort(
+      (a, b) =>
+        (a.status === "downloading" ? 0 : 1) - (b.status === "downloading" ? 0 : 1),
+    );
   const completedDownloadsRaw = downloads.filter(
     (d) =>
       d.status === "completed" ||
