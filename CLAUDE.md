@@ -170,6 +170,7 @@ Tokens live in `frontend/src/styles/tokens.css`. All values must come from token
 - **Spacing:** 4px grid (`--space-1` through `--space-8`)
 - **Radii:** sm 6px, md 10px, lg 16px
 - **Font:** Plus Jakarta Sans (`@fontsource/plus-jakarta-sans`, self-hosted)
+- **Brand mark:** `LogoMark` in `App.tsx` — hex "aperture" ring (`var(--color-accent)`) around a play triangle (`currentColor`); wordmark is `Stream` + accent `Snap`. Favicon: `frontend/public/favicon.svg` (same mark on a dark tile).
 - **Motion:** Always `cubic-bezier(0.16, 1, 0.3, 1)` with `--dur-fast` (120ms), `--dur-base` (200ms), or `--dur-slow` (320ms). `global.css` collapses all motion under `prefers-reduced-motion: reduce`.
 - Styling: CSS Modules only — no Tailwind, no CSS-in-JS
 - **Responsive:** `Dashboard.module.css` breakpoints at 900px (input/format rows wrap) and 640px (tables → stacked cards; `data-label` on a `<td>` becomes its inline label; `.rowQueued` collapses queued downloads to one line). Body must never scroll horizontally.
