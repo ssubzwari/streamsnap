@@ -38,8 +38,9 @@ downloads/**
 .env.*
 !.env.example
 
-# Claude Code local settings
+# Claude Code local settings + machine-specific launch config
 .claude/settings.local.json
+.claude/launch.json
 
 # Misc
 *.url
