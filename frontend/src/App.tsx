@@ -5,6 +5,7 @@ import Settings from "@/pages/Settings";
 import ToastContainer from "@/components/Toast";
 import Background from "@/theme/Background";
 import { ThemeProvider } from "@/theme/ThemeContext";
+import { UiPrefsProvider } from "@/ui/UiPrefsContext";
 
 import styles from "./App.module.css";
 
@@ -25,6 +26,7 @@ export default function App() {
 
   return (
     <ThemeProvider>
+      <UiPrefsProvider>
       <Background paused={settingsOpen} />
       <div className={styles.shell}>
         <nav className={styles.topNav}>
@@ -63,6 +65,7 @@ export default function App() {
       </div>
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
       <ToastContainer />
+      </UiPrefsProvider>
     </ThemeProvider>
   );
 }

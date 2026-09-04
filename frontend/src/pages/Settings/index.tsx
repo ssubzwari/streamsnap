@@ -29,6 +29,7 @@ import {
 import { padEpisodeNumbers } from "@/api/downloads";
 import { useTheme } from "@/theme/ThemeContext";
 import { BACKGROUND_OPTIONS } from "@/theme/types";
+import { useUiPrefs } from "@/ui/UiPrefsContext";
 import styles from "./Settings.module.css";
 
 interface SettingsState {
@@ -1079,10 +1080,32 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: stri
 
 function ThemeTab() {
   const { mode, background, setMode, setBackground } = useTheme();
+  const { statsMeter, setStatsMeter, resetSectionOrder } = useUiPrefs();
   const groups: Array<"Off" | "Vanta" | "Custom"> = ["Off", "Vanta", "Custom"];
 
   return (
     <div className={styles.fields}>
+      <SectionTitle>Interface</SectionTitle>
+      <Toggle
+        label="Download activity meter"
+        hint="Show the collapsible throughput graph above the download list"
+        checked={statsMeter}
+        onChange={() => setStatsMeter(!statsMeter)}
+      />
+      <Field
+        label="Dashboard layout"
+        hint="Reorder the Advanced Options / Downloading / Completed / Subscriptions blocks with the ▲▼ buttons in each section header."
+      >
+        <button
+          type="button"
+          className={styles.presetBtn}
+          onClick={resetSectionOrder}
+          style={{ alignSelf: "flex-start" }}
+        >
+          Reset section order
+        </button>
+      </Field>
+
       <SectionTitle>Page mode</SectionTitle>
       <div className={styles.themeModeRow}>
         {(["dark", "light"] as const).map((m) => (

@@ -1,6 +1,8 @@
 import { useEffect, useReducer, useState } from "react";
 
 import { SkeletonRow } from "@/components/Skeleton";
+import StatsMeter from "@/components/StatsMeter";
+import { useUiPrefs, type SectionId } from "@/ui/UiPrefsContext";
 import {
   createDownload,
   deleteDownload,
@@ -113,6 +115,53 @@ const ChevronIcon = ({ open }: { open: boolean }) => (
   </svg>
 );
 
+const CaretIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 15 12 9 18 15" />
+  </svg>
+);
+
+// ── Section reorder control ───────────────────────────────────────────────────
+// Two small up/down buttons in a section header — swap this section with its
+// neighbour in the persisted order. Simpler and more touch-friendly than
+// drag-and-drop, and matches "move up / down".
+
+function ReorderControls({
+  id,
+  order,
+  move,
+}: {
+  id: SectionId;
+  order: SectionId[];
+  move: (id: SectionId, dir: -1 | 1) => void;
+}) {
+  const i = order.indexOf(id);
+  return (
+    <div className={styles.reorder}>
+      <button
+        type="button"
+        className={styles.reorderBtn}
+        disabled={i <= 0}
+        onClick={() => move(id, -1)}
+        title="Move section up"
+        aria-label="Move section up"
+      >
+        <CaretIcon />
+      </button>
+      <button
+        type="button"
+        className={`${styles.reorderBtn} ${styles.reorderBtnDown}`}
+        disabled={i < 0 || i >= order.length - 1}
+        onClick={() => move(id, 1)}
+        title="Move section down"
+        aria-label="Move section down"
+      >
+        <CaretIcon />
+      </button>
+    </div>
+  );
+}
+
 // ── Format spec builder ───────────────────────────────────────────────────────
 
 function buildFormatSpec(
@@ -216,6 +265,20 @@ function formatBytes(bytes: number | null): string {
   return `${(bytes / 1_000).toFixed(0)} KB`;
 }
 
+// yt-dlp emits speeds like "1.23MiB/s" / "812.00KiB/s" — parse to bytes/sec so
+// the stats meter can total them regardless of each row's unit.
+function parseSpeedBps(s: string | null | undefined): number {
+  if (!s) return 0;
+  const m = s.match(/([\d.]+)\s*([KMGT])?i?B\/s/i);
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n)) return 0;
+  const u = (m[2] || "").toUpperCase();
+  const mult =
+    u === "T" ? 1024 ** 4 : u === "G" ? 1024 ** 3 : u === "M" ? 1024 ** 2 : u === "K" ? 1024 : 1;
+  return n * mult;
+}
+
 function formatDate(iso: string | null): string {
   if (!iso) return "Never";
   const d = new Date(iso);
@@ -274,6 +337,10 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings: _onCloseSettings, activeDownloadCount, totalSpeedReport }: DashboardProps) {
+  // ── UI preferences (stats meter + section order) ──────────────────────────
+  const { statsMeter: showStatsMeter, sectionOrder, moveSection } = useUiPrefs();
+  const sectionOrderStyle = (id: SectionId) => ({ order: sectionOrder.indexOf(id) + 1 });
+
   // ── URL / format state ────────────────────────────────────────────────────
   const [url, setUrl] = useState("");
   const [type, setType] = useState("video");
@@ -513,9 +580,14 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   }, []);
 
   // ── Derived stats ─────────────────────────────────────────────────────────
-  const activeDownloads = downloads.filter(
-    (d) => d.status === "queued" || d.status === "downloading",
-  );
+  // In-progress downloads float to the top, queued keep their order below.
+  // (Array.prototype.sort is stable, so same-status rows stay put.)
+  const activeDownloads = downloads
+    .filter((d) => d.status === "queued" || d.status === "downloading")
+    .sort(
+      (a, b) =>
+        (a.status === "downloading" ? 0 : 1) - (b.status === "downloading" ? 0 : 1),
+    );
   const completedDownloadsRaw = downloads.filter(
     (d) =>
       d.status === "completed" ||
@@ -537,6 +609,11 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     /^[\d.]+\s*/,
     "",
   ) ?? "MB/s";
+  // Combined throughput in bytes/sec — unit-aware, for the stats meter.
+  const downloadSpeedBps = activeDownloads.reduce(
+    (sum, d) => sum + parseSpeedBps(d.speed),
+    0,
+  );
 
   // ── At-a-glance section summaries (shown in the collapsible headers) ──────
   const downloadingNow = activeDownloads.filter((d) => d.status === "downloading").length;
@@ -1216,16 +1293,28 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         </div>
 
         {/* ── Advanced Options accordion ── */}
-        <div className={styles.advancedSection}>
-          <button
-            className={styles.advancedToggle}
-            onClick={() => setAdvancedOpen((o) => !o)}
-          >
-            <span className={styles.advancedToggleIcon}>
-              {advancedOpen ? "\u25BE" : "\u25B8"}
-            </span>
-            Advanced Options
-          </button>
+        {showStatsMeter && (
+          <StatsMeter
+            speedBps={downloadSpeedBps}
+            downloading={downloadingNow}
+            queued={queuedNow}
+            completedBytes={doneBytes}
+          />
+        )}
+
+        <div className={styles.advancedSection} style={sectionOrderStyle("advanced")}>
+          <div className={styles.advancedHeaderRow}>
+            <button
+              className={styles.advancedToggle}
+              onClick={() => setAdvancedOpen((o) => !o)}
+            >
+              <span className={styles.advancedToggleIcon}>
+                {advancedOpen ? "\u25BE" : "\u25B8"}
+              </span>
+              Advanced Options
+            </button>
+            <ReorderControls id="advanced" order={sectionOrder} move={moveSection} />
+          </div>
 
           {advancedOpen && (
             <div className={styles.advancedPanel}>
@@ -1361,7 +1450,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         </div>
 
         {/* ── Downloading section ── */}
-        <section className={styles.tableSection}>
+        <section className={styles.tableSection} style={sectionOrderStyle("downloading")}>
           <div className={styles.sectionHeader}>
             <button
               type="button"
@@ -1378,6 +1467,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               <span className={styles.sectionSummary}>{downloadingSummary}</span>
             </button>
             <div className={styles.sectionActions}>
+              <ReorderControls id="downloading" order={sectionOrder} move={moveSection} />
               <button
                 className={styles.ghostBtn}
                 disabled={selectedActive.size === 0}
@@ -1508,7 +1598,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         </section>
 
         {/* ── Completed section ── */}
-        <section className={styles.tableSection}>
+        <section className={styles.tableSection} style={sectionOrderStyle("completed")}>
           <div className={styles.sectionHeader}>
             <button
               type="button"
@@ -1524,6 +1614,9 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               )}
               <span className={styles.sectionSummary}>{completedSummary}</span>
             </button>
+            <div className={styles.sectionActions}>
+              <ReorderControls id="completed" order={sectionOrder} move={moveSection} />
+            </div>
           </div>
           {openSections.completed && (
           <div className={styles.sectionBody}>
@@ -1855,7 +1948,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         </section>
 
         {/* ── Subscriptions section ── */}
-        <section className={styles.tableSection}>
+        <section className={styles.tableSection} style={sectionOrderStyle("subscriptions")}>
           <div className={styles.sectionHeader}>
             <button
               type="button"
@@ -1872,6 +1965,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               <span className={styles.sectionSummary}>{subscriptionsSummary}</span>
             </button>
             <div className={styles.sectionActions}>
+              <ReorderControls id="subscriptions" order={sectionOrder} move={moveSection} />
               <button
                 className={styles.accentBtn}
                 onClick={() => setAddSubOpen((o) => !o)}
