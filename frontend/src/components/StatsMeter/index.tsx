@@ -91,7 +91,7 @@ export default function StatsMeter({
     return () => clearInterval(iv);
   }, []);
 
-  const { peak, avg, area, line, scaleLabel } = useMemo(() => {
+  const { peak, avg, area, line, dot, scaleLabel } = useMemo(() => {
     const cur = speedRef.current;
     const pk = Math.max(cur, ...history);
     const active = history.filter((v) => v > 0);
@@ -101,17 +101,21 @@ export default function StatsMeter({
 
     const W = 100;
     const H = 32;
-    const scale = pk > 0 ? pk * 1.15 : 1;
-    const pts = history.map((v, i) => {
-      const x = (i / (WINDOW - 1)) * W;
-      const y = H - (v / scale) * H;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    });
+    // Y axis tracks the window peak (with a little headroom) so the trace
+    // always fills the height regardless of absolute speed.
+    const scale = pk > 0 ? pk * 1.1 : 1;
+    const pts = history.map((v, i): [number, number] => [
+      (i / (WINDOW - 1)) * W,
+      H - (v / scale) * H,
+    ]);
+    const poly = pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" L");
+    const last = pts[pts.length - 1];
     return {
       peak: pk,
       avg: av,
-      area: `M0,${H} L${pts.join(" L")} L${W},${H} Z`,
-      line: `M${pts.join(" L")}`,
+      area: `M0,${H} L${poly} L${W},${H} Z`,
+      line: `M${poly}`,
+      dot: pk > 0 ? { x: last[0], y: last[1] } : null,
       scaleLabel: pk > 0 ? fmtBps(scale) : "",
     };
   }, [history]);
@@ -142,44 +146,38 @@ export default function StatsMeter({
               <line x1="0" y1="16" x2="100" y2="16" className={styles.grid} />
               <path d={area} className={styles.area} />
               <path d={line} className={styles.line} />
+              {dot && <circle cx={dot.x} cy={dot.y} r="1.6" className={styles.dot} />}
             </svg>
-            <span className={styles.axisMax}>{scaleLabel}</span>
-            <span className={styles.axisMin}>0</span>
+            {scaleLabel && <span className={styles.axisMax}>{scaleLabel}</span>}
           </div>
 
-          <div className={styles.legend}>
-            <span className={styles.legendItem}>
-              <span className={styles.swatch} />
-              Throughput · last {WINDOW}s
+          <div className={styles.stats}>
+            <span className={styles.stat}>
+              <i>Cur</i>
+              {fmtBps(speedBps)}
+            </span>
+            <span className={styles.stat}>
+              <i>Peak</i>
+              {fmtBps(peak)}
+            </span>
+            <span className={styles.stat}>
+              <i>Avg</i>
+              {fmtBps(avg)}
+            </span>
+            <span className={styles.sep} aria-hidden="true" />
+            <span className={styles.stat}>
+              <i>Downloading</i>
+              {downloading}
+            </span>
+            <span className={styles.stat}>
+              <i>Queued</i>
+              {queued}
+            </span>
+            <span className={styles.stat}>
+              <i>Done</i>
+              {fmtBytes(completedBytes)}
             </span>
           </div>
-
-          <dl className={styles.stats}>
-            <div className={styles.stat}>
-              <dt className={styles.statLabel}>Current</dt>
-              <dd className={styles.statValue}>{fmtBps(speedBps)}</dd>
-            </div>
-            <div className={styles.stat}>
-              <dt className={styles.statLabel}>Peak</dt>
-              <dd className={styles.statValue}>{fmtBps(peak)}</dd>
-            </div>
-            <div className={styles.stat}>
-              <dt className={styles.statLabel}>Average</dt>
-              <dd className={styles.statValue}>{fmtBps(avg)}</dd>
-            </div>
-            <div className={styles.stat}>
-              <dt className={styles.statLabel}>Downloading</dt>
-              <dd className={styles.statValue}>{downloading}</dd>
-            </div>
-            <div className={styles.stat}>
-              <dt className={styles.statLabel}>Queued</dt>
-              <dd className={styles.statValue}>{queued}</dd>
-            </div>
-            <div className={styles.stat}>
-              <dt className={styles.statLabel}>Completed</dt>
-              <dd className={styles.statValue}>{fmtBytes(completedBytes)}</dd>
-            </div>
-          </dl>
         </div>
       )}
     </section>
