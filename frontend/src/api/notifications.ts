@@ -70,8 +70,27 @@ export async function deleteChannel(id: number): Promise<void> {
   return apiFetch<void>(`/notifications/channels/${id}`, { method: "DELETE" });
 }
 
-export async function testChannel(id: number): Promise<void> {
-  return apiFetch<void>(`/notifications/channels/${id}/test`, { method: "POST" });
+export interface ChannelTestResult {
+  ok: boolean;
+  logs: string[];
+  error: string | null;
+}
+
+export async function testChannel(id: number): Promise<ChannelTestResult> {
+  return apiFetch<ChannelTestResult>(`/notifications/channels/${id}/test`, {
+    method: "POST",
+  });
+}
+
+/** Test an unsaved config from the add/edit form. */
+export async function testChannelConfig(
+  kind: ChannelKind,
+  config: Record<string, string>,
+): Promise<ChannelTestResult> {
+  return apiFetch<ChannelTestResult>("/notifications/channels/test", {
+    method: "POST",
+    body: JSON.stringify({ kind, config_json: JSON.stringify(config) }),
+  });
 }
 
 export async function sendSummaryNow(): Promise<void> {
