@@ -17,9 +17,13 @@ import {
   type YtdlpVersionInfo,
 } from "@/api/settings";
 import {
+  type ChannelEvent,
   type ChannelKind,
   type ChannelTestResult,
   type NotificationChannel,
+  CHANNEL_EVENTS,
+  DEFAULT_CHANNEL_EVENTS,
+  channelEvents,
   createChannel,
   deleteChannel,
   listChannels,
@@ -217,6 +221,7 @@ export default function Settings({ onClose }: Props) {
   const [addingKind, setAddingKind] = useState<ChannelKind | "">("");
   const [addingName, setAddingName] = useState("");
   const [addingConfig, setAddingConfig] = useState<Record<string, string>>({});
+  const [addingEvents, setAddingEvents] = useState<ChannelEvent[]>([...DEFAULT_CHANNEL_EVENTS]);
   const [addingInProgress, setAddingInProgress] = useState(false);
   const [addTesting, setAddTesting] = useState(false);
   const [addTestResult, setAddTestResult] = useState<ChannelTestResult | null>(null);
@@ -277,11 +282,13 @@ export default function Settings({ onClose }: Props) {
         kind: addingKind,
         name: addingName.trim(),
         config_json: JSON.stringify(addingConfig),
+        events_json: JSON.stringify(addingEvents),
       });
       setChannels((prev) => [...prev, ch]);
       setAddingKind("");
       setAddingName("");
       setAddingConfig({});
+      setAddingEvents([...DEFAULT_CHANNEL_EVENTS]);
       setAddTestResult(null);
     } catch (e) { console.error(e); }
     finally { setAddingInProgress(false); }
@@ -984,7 +991,12 @@ export default function Settings({ onClose }: Props) {
                   <select
                     className={styles.select}
                     value={addingKind}
-                    onChange={(e) => { setAddingKind(e.target.value as ChannelKind | ""); setAddingConfig({}); }}
+                    onChange={(e) => {
+                      setAddingKind(e.target.value as ChannelKind | "");
+                      setAddingConfig({});
+                      setAddingEvents([...DEFAULT_CHANNEL_EVENTS]);
+                      setAddTestResult(null);
+                    }}
                     style={{ maxWidth: 180 }}
                   >
                     <option value="">Add a channel…</option>
@@ -1007,6 +1019,7 @@ export default function Settings({ onClose }: Props) {
                           />
                         </Field>
                       ))}
+                      <EventPicker value={addingEvents} onChange={setAddingEvents} />
                       <div className={styles.editorActions}>
                         <button className={styles.saveBtn} style={{ marginTop: 4 }} onClick={handleAddChannel} disabled={addingInProgress}>
                           {addingInProgress ? "Adding…" : "Add channel"}
@@ -1088,6 +1101,44 @@ function parseConfig(raw: string | null): Record<string, string> {
   }
 }
 
+function eventSummary(events: ChannelEvent[]): string {
+  if (events.length === 0) return "no events";
+  if (events.length === CHANNEL_EVENTS.length) return "all events";
+  const labels = CHANNEL_EVENTS.filter((e) => events.includes(e.event)).map((e) =>
+    e.label.replace("Download ", "").replace("Playlist download completed", "playlist").toLowerCase(),
+  );
+  return labels.join(", ");
+}
+
+function EventPicker({
+  value,
+  onChange,
+}: {
+  value: ChannelEvent[];
+  onChange: (next: ChannelEvent[]) => void;
+}) {
+  const toggle = (ev: ChannelEvent) =>
+    onChange(value.includes(ev) ? value.filter((e) => e !== ev) : [...value, ev]);
+  return (
+    <div className={styles.eventPicker}>
+      <span className={styles.fieldLabel}>Send to this channel</span>
+      <div className={styles.eventGrid}>
+        {CHANNEL_EVENTS.map((e) => (
+          <label key={e.event} className={styles.eventItem}>
+            <input
+              type="checkbox"
+              className={styles.checkbox}
+              checked={value.includes(e.event)}
+              onChange={() => toggle(e.event)}
+            />
+            <span>{e.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TestLog({ result, onDismiss }: { result: ChannelTestResult; onDismiss: () => void }) {
   const lines = [...result.logs];
   if (result.error && !result.ok) lines.push("", result.error);
@@ -1117,6 +1168,7 @@ function ChannelCard({
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(ch.name);
   const [config, setConfig] = useState<Record<string, string>>(() => parseConfig(ch.config_json));
+  const [events, setEvents] = useState<ChannelEvent[]>(() => channelEvents(ch));
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<ChannelTestResult | null>(null);
@@ -1124,6 +1176,7 @@ function ChannelCard({
   const resetEdits = () => {
     setName(ch.name);
     setConfig(parseConfig(ch.config_json));
+    setEvents(channelEvents(ch));
   };
 
   const save = async () => {
@@ -1132,6 +1185,7 @@ function ChannelCard({
       const updated = await updateChannel(ch.id, {
         name: name.trim() || ch.name,
         config_json: JSON.stringify(config),
+        events_json: JSON.stringify(events),
       });
       onChange(updated);
       setEditing(false);
@@ -1171,7 +1225,10 @@ function ChannelCard({
     <div className={styles.channelCard}>
       <div className={styles.channelRow}>
         <span className={styles.channelKind}>{meta?.label ?? ch.kind}</span>
-        <span className={styles.channelName}>{ch.name}</span>
+        <span className={styles.channelName}>
+          {ch.name}
+          <span className={styles.channelEvents}>{eventSummary(channelEvents(ch))}</span>
+        </span>
         <div className={styles.channelActions}>
           <button className={styles.presetBtn} onClick={runTest} disabled={testing}>
             {testing ? "Testing…" : "Test"}
@@ -1210,6 +1267,7 @@ function ChannelCard({
               />
             </Field>
           ))}
+          <EventPicker value={events} onChange={setEvents} />
           <div className={styles.editorActions}>
             <button className={styles.saveBtn} onClick={save} disabled={saving}>
               {saving ? "Saving…" : "Save changes"}

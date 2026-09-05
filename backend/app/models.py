@@ -18,6 +18,9 @@ class Download(Base):
     percent: Mapped[float] = mapped_column(default=0.0)
     speed: Mapped[str | None] = mapped_column(String)
     eta: Mapped[int | None]
+    # Position in the pending-download queue. Lower runs first. NULL sorts last
+    # (rows created before this column existed / not yet enqueued).
+    queue_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     format_spec: Mapped[str | None] = mapped_column(String)
     # Target directory for this download (playlist / subscription subfolder, or
     # the app default). Persisted so a resume/retry writes to the right place.
@@ -103,5 +106,8 @@ class NotificationChannel(Base):
     kind: Mapped[str] = mapped_column(String)   # smtp|slack|discord|telegram|pushover
     name: Mapped[str] = mapped_column(String)   # user label
     config_json: Mapped[str | None] = mapped_column(String)  # JSON blob
+    # JSON array of notification kinds this channel should receive. NULL means
+    # "use the default set" (see external_notifier.DEFAULT_CHANNEL_EVENTS).
+    events_json: Mapped[str | None] = mapped_column(String, nullable=True)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

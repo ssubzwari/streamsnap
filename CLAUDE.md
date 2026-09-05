@@ -106,8 +106,9 @@ yt-dlp  (YoutubeDL class, not subprocess)
 
 | Table | Key columns |
 |---|---|
-| `downloads` | id, url, title, status (`queued/downloading/completed/failed/canceled`), percent, speed, eta, format_spec, output_dir, output_path, error_message, subscription_id FK, ext, filesize, height, vcodec, acodec, category/subcategory/tag |
+| `downloads` | id, url, title, status (`queued/downloading/completed/failed/canceled`), percent, speed, eta, queue_position, format_spec, output_dir, output_path, error_message, subscription_id FK, ext, filesize, height, vcodec, acodec, category/subcategory/tag |
 | `subscriptions` | id, url, title, check_interval_minutes, last_checked_at, format_spec, output_template, is_active, download_existing, download_dir, notify, category/subcategory/tag |
+| `notification_channels` | id, kind (`smtp/slack/discord/telegram/pushover`), name, config_json, events_json (per-channel event filter; NULL = default set), is_enabled |
 | `seen_videos` | id, subscription_id FK, video_id, title, upload_date — UNIQUE(subscription_id, video_id) |
 | `notifications` | id, kind, title, body, payload_json, is_read, created_at |
 | `settings` | key/value store for app-wide yt-dlp defaults + internal `schema_version` key |
@@ -120,9 +121,17 @@ yt-dlp  (YoutubeDL class, not subprocess)
 3. Bootstraps new DBs (version 0, run all migrations) vs existing pre-versioning DBs (version 1, already migrated)
 4. Runs any pending `_migrate_vN` functions in order, writing the version after each one
 
-**To add a migration:** write `async def _migrate_v2(conn)`, append to `_MIGRATIONS`, set `SCHEMA_VERSION = 2`. The loop handles the rest.
+**To add a migration:** write `async def _migrate_vN(conn)`, append to `_MIGRATIONS`, bump `SCHEMA_VERSION`. The loop handles the rest. (Current: v4 — v3 added `downloads.queue_position`, v4 added `notification_channels.events_json`.)
 
 The current schema version is exposed at `GET /api/settings/db/schema-version` and displayed in Settings → Advanced → Database.
+
+## Download Queue Order
+
+`downloads.queue_position` (int, lower runs first) is the pending queue order. `download_manager.enqueue()` assigns the next tail position to rows that don't have one; retry resets it to the tail, resume keeps it. The worker's in-memory `asyncio.Queue` is only a wake-up signal — `_process_queue` calls `_pick_next_job()` which selects the lowest-`queue_position` `queued` row from the DB, so reordering takes effect immediately. `POST /api/downloads/queue/reorder` (`{ordered_ids}`) rewrites positions; the Dashboard shows ▲▼ buttons on queued rows (`handleMoveQueued` → reorder). Queued rows sort by `queue_position` under the downloading rows.
+
+## Notification Dispatch
+
+`create_notification(kind, …)` makes two independent decisions: the global `notify_on_*` Setting gates the **in-app** row + toast; external **channels are always dispatched** and each filters on its own `events_json` (`external_notifier.DEFAULT_CHANNEL_EVENTS` when NULL — so existing channels keep pre-per-channel behaviour). `auth_required` always goes to every enabled channel. `send_summary()` dispatches kind `summary`, which channels opt into like any other event. `POST /api/notifications/channels/{id}/test` and `/channels/test` (unsaved config) return `{ok, logs, error}` — a redacted step-by-step transcript rendered in the UI.
 
 ## Subscription Flow
 
@@ -148,7 +157,7 @@ Tab order: **Theme, Format, Subtitles, Metadata, Post-processing, Download, Outp
 | **Output** | paths (temp/home), output template with variable reference, restrict filenames, "Fix existing files" → zero-pad episode numbers already on disk (`POST /api/downloads/pad-episodes`) |
 | **Auth** | cookies-from-browser selector, username, password (server-side only) |
 | **Advanced** | schema version display, yt-dlp updater, database admin (backup / download backup / upload & restore / restore / initialize), raw `YoutubeDL` options JSON |
-| **Notifications** | per-event toggles, external channels (SMTP/Slack/Discord/Telegram/Pushover), periodic summary |
+| **Notifications** | global per-event toggles (in-app toast/bell only); external channels (SMTP/Slack/Discord/Telegram/Pushover) — each with inline edit, connection **Test** (step-by-step debug log), and its own **event filter** (which kinds it receives, independent of the global toggles); periodic summary |
 
 Format presets: **Best Quality** (`bestvideo+bestaudio/best`), **1080p mp4**, **720p mp4**, **Audio only m4a**, **Audio only opus**.
 

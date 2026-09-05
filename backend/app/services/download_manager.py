@@ -186,9 +186,57 @@ class DownloadManager:
         format_spec: str,
         output_dir: str | None = None,
     ) -> None:
+        await self._assign_queue_position(download_id)
         await self._job_queue.put(
             _Job(download_id=download_id, url=url, format_spec=format_spec, output_dir=output_dir)
         )
+
+    async def _assign_queue_position(self, download_id: int) -> None:
+        """Give a freshly-queued download the next position at the tail. Rows
+        that already have a position (a resumed download) keep it, so a restart
+        doesn't shuffle the queue."""
+        from sqlalchemy import func, select
+        from app.models import Download
+
+        SessionLocal = get_sessionmaker()
+        async with SessionLocal() as session:
+            d = await session.get(Download, download_id)
+            if d is None or d.queue_position is not None:
+                return
+            mx = (await session.execute(select(func.max(Download.queue_position)))).scalar() or 0
+            d.queue_position = mx + 1
+            await session.commit()
+
+    async def _pick_next_job(self) -> tuple[int, str, str, str | None] | None:
+        """The queue is ordered by ``queue_position`` in the DB (user-
+        reorderable), so the in-memory queue is only a wake-up signal — the
+        actual next download is chosen here."""
+        from sqlalchemy import select
+        from app.models import Download
+
+        SessionLocal = get_sessionmaker()
+        async with SessionLocal() as session:
+            rows = (
+                await session.execute(
+                    select(Download)
+                    .where(Download.status == "queued")
+                    .order_by(
+                        Download.queue_position.is_(None),
+                        Download.queue_position.asc(),
+                        Download.created_at.asc(),
+                    )
+                )
+            ).scalars()
+            for d in rows:
+                if d.id in self._active_futures:
+                    continue
+                return (
+                    d.id,
+                    d.url,
+                    d.format_spec or "bestvideo*+bestaudio/best",
+                    await self._resolve_output_dir(session, d),
+                )
+        return None
 
     async def resume_incomplete(self) -> int:
         """Re-enqueue downloads left as queued/downloading by a restart.
@@ -324,34 +372,42 @@ class DownloadManager:
                 await self._slot_free.wait()
                 await self._resume_event.wait()
 
-            job = await self._job_queue.get()
+            await self._job_queue.get()
             if self._paused:
                 # Pause landed while this job was in flight — drop it; the row
                 # is still "queued" and resume() re-enqueues it from the DB.
                 continue
-            cancel_event = threading.Event()
-            self._cancel_events[job.download_id] = cancel_event
 
-            await self._update_db(job.download_id, status="downloading")
-            await self._notify_started(job.download_id)
+            # Ignore the dequeued job's identity — pick the actual next
+            # download by the (reorderable) queue_position order in the DB.
+            picked = await self._pick_next_job()
+            if picked is None:
+                continue
+            job_id, job_url, job_fmt, job_dir = picked
+
+            cancel_event = threading.Event()
+            self._cancel_events[job_id] = cancel_event
+
+            await self._update_db(job_id, status="downloading")
+            await self._notify_started(job_id)
 
             app_settings = await self._load_app_settings()
 
             self._running += 1
-            self._counted_ids.add(job.download_id)
+            self._counted_ids.add(job_id)
             future: Future = self._executor.submit(
                 run_download,
-                job.download_id,
-                job.url,
-                job.format_spec,
-                job.output_dir or settings.DOWNLOAD_DIR,
+                job_id,
+                job_url,
+                job_fmt,
+                job_dir or settings.DOWNLOAD_DIR,
                 self._progress_queue,
                 cancel_event,
                 app_settings,
             )
-            self._active_futures[job.download_id] = future
+            self._active_futures[job_id] = future
 
-            def _on_done(f: Future, did: int = job.download_id) -> None:
+            def _on_done(f: Future, did: int = job_id) -> None:
                 if f.cancelled():
                     self._progress_queue.put({"type": "canceled", "id": did, "error": "Canceled"})
                 elif f.exception() is not None:

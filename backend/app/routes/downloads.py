@@ -362,6 +362,59 @@ async def downloads_status() -> dict:
     return download_manager.status
 
 
+class QueueReorderRequest(BaseModel):
+    # The queued download ids in the desired run order (index 0 runs next).
+    ordered_ids: list[int]
+
+
+@router.post("/queue/reorder", response_model=list[DownloadInfo])
+async def reorder_queue(
+    req: QueueReorderRequest,
+    session: AsyncSession = Depends(get_session),
+) -> list[DownloadInfo]:
+    """Set the run order of the pending queue. Only rows still ``queued`` are
+    moved; the client sends the full queued list in the order it wants."""
+    rows = (
+        await session.execute(
+            select(Download).where(Download.status == "queued")
+        )
+    ).scalars().all()
+    by_id = {d.id: d for d in rows}
+
+    pos = 1
+    changed: list[Download] = []
+    # Listed ids first, in the given order …
+    for did in req.ordered_ids:
+        d = by_id.pop(did, None)
+        if d is None:
+            continue
+        if d.queue_position != pos:
+            d.queue_position = pos
+            changed.append(d)
+        pos += 1
+    # … then any queued row the client didn't mention, keeping their order.
+    for d in sorted(by_id.values(), key=lambda x: (x.queue_position is None, x.queue_position or 0, x.id)):
+        if d.queue_position != pos:
+            d.queue_position = pos
+            changed.append(d)
+        pos += 1
+
+    await session.commit()
+
+    for d in changed:
+        await session.refresh(d)
+        await emit_download_updated(DownloadInfo.model_validate(d).model_dump(mode="json"))
+
+    ordered = (
+        await session.execute(
+            select(Download)
+            .where(Download.status == "queued")
+            .order_by(Download.queue_position.asc())
+        )
+    ).scalars().all()
+    return [DownloadInfo.model_validate(d) for d in ordered]
+
+
 @router.post("/pause-all")
 async def pause_all_downloads() -> dict:
     """Pause all active and queued downloads."""
@@ -738,6 +791,7 @@ async def retry_download(
     download.error_message = None
     download.speed = None
     download.eta = None
+    download.queue_position = None  # re-queue at the tail
     if output_dir:
         download.output_dir = output_dir
     await session.commit()

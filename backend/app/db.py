@@ -11,7 +11,7 @@ _SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 # Bump this constant whenever a new _migrate_vN function is added.
 # Format: integer, monotonically increasing.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 
 class Base(DeclarativeBase):
@@ -99,11 +99,44 @@ async def _migrate_v2(conn: AsyncConnection) -> None:
         )
 
 
+async def _migrate_v3(conn: AsyncConnection) -> None:
+    """Add downloads.queue_position and backfill it in creation order so the
+    queue has a stable, user-reorderable ordering."""
+    from sqlalchemy import text
+
+    dl_cols = await conn.run_sync(lambda c: _existing_cols(c, "downloads"))
+    if "queue_position" not in dl_cols:
+        await conn.execute(
+            text("ALTER TABLE downloads ADD COLUMN queue_position INTEGER")
+        )
+        await conn.execute(
+            text(
+                "UPDATE downloads SET queue_position = ("
+                "  SELECT COUNT(*) FROM downloads d2 WHERE d2.id <= downloads.id"
+                ")"
+            )
+        )
+
+
+async def _migrate_v4(conn: AsyncConnection) -> None:
+    """Add notification_channels.events_json (per-channel event filter).
+    NULL = use the default event set."""
+    from sqlalchemy import text
+
+    ch_cols = await conn.run_sync(lambda c: _existing_cols(c, "notification_channels"))
+    if "events_json" not in ch_cols:
+        await conn.execute(
+            text("ALTER TABLE notification_channels ADD COLUMN events_json VARCHAR")
+        )
+
+
 # Registry — index N-1 contains the function that migrates to version N.
-# To add version 3: write _migrate_v3, append it here, set SCHEMA_VERSION = 3.
+# To add version 5: write _migrate_v5, append it here, set SCHEMA_VERSION = 5.
 _MIGRATIONS = [
     _migrate_v1,   # index 0 → reaches version 1
     _migrate_v2,   # index 1 → reaches version 2
+    _migrate_v3,   # index 2 → reaches version 3
+    _migrate_v4,   # index 3 → reaches version 4
 ]
 
 
@@ -170,6 +203,23 @@ async def init_db() -> None:
                     "  WHERE s.id = downloads.subscription_id"
                     ") WHERE subscription_id IS NOT NULL AND output_dir IS NULL"
                 )
+            )
+        if "queue_position" not in dl_cols:
+            await conn.execute(
+                text("ALTER TABLE downloads ADD COLUMN queue_position INTEGER")
+            )
+            await conn.execute(
+                text(
+                    "UPDATE downloads SET queue_position = ("
+                    "  SELECT COUNT(*) FROM downloads d2 WHERE d2.id <= downloads.id"
+                    ") WHERE queue_position IS NULL"
+                )
+            )
+
+        ch_cols = await conn.run_sync(lambda c: _existing_cols(c, "notification_channels"))
+        if "events_json" not in ch_cols:
+            await conn.execute(
+                text("ALTER TABLE notification_channels ADD COLUMN events_json VARCHAR")
             )
 
 

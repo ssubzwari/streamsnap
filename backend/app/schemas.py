@@ -54,6 +54,7 @@ class DownloadInfo(BaseModel):
     percent: float
     speed: str | None = None
     eta: int | None = None
+    queue_position: int | None = None
     format_spec: str | None = None
     output_path: str | None = None
     error_message: str | None = None
@@ -171,12 +172,15 @@ class NotificationChannelCreate(BaseModel):
     kind: str
     name: str
     config_json: str | None = None
+    # JSON array of notification kinds; omit / null → default event set.
+    events_json: str | None = None
     is_enabled: bool = True
 
 
 class NotificationChannelUpdate(BaseModel):
     name: str | None = None
     config_json: str | None = None
+    events_json: str | None = None
     is_enabled: bool | None = None
 
 
@@ -187,6 +191,7 @@ class NotificationChannelInfo(BaseModel):
     kind: str
     name: str
     config_json: str | None = None
+    events_json: str | None = None
     is_enabled: bool
     created_at: datetime
 
