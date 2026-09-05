@@ -18,12 +18,14 @@ import {
 } from "@/api/settings";
 import {
   type ChannelKind,
+  type ChannelTestResult,
   type NotificationChannel,
   createChannel,
   deleteChannel,
   listChannels,
   sendSummaryNow,
   testChannel,
+  testChannelConfig,
   updateChannel,
 } from "@/api/notifications";
 import { padEpisodeNumbers } from "@/api/downloads";
@@ -216,7 +218,8 @@ export default function Settings({ onClose }: Props) {
   const [addingName, setAddingName] = useState("");
   const [addingConfig, setAddingConfig] = useState<Record<string, string>>({});
   const [addingInProgress, setAddingInProgress] = useState(false);
-  const [testingId, setTestingId] = useState<number | null>(null);
+  const [addTesting, setAddTesting] = useState(false);
+  const [addTestResult, setAddTestResult] = useState<ChannelTestResult | null>(null);
   const [summaryInProgress, setSummaryInProgress] = useState(false);
 
   // ── yt-dlp updater state ──────────────────────────────────────────────────
@@ -279,15 +282,26 @@ export default function Settings({ onClose }: Props) {
       setAddingKind("");
       setAddingName("");
       setAddingConfig({});
+      setAddTestResult(null);
     } catch (e) { console.error(e); }
     finally { setAddingInProgress(false); }
   };
 
-  const handleToggleChannel = async (ch: NotificationChannel) => {
+  const handleTestAddConfig = async () => {
+    if (!addingKind) return;
+    setAddTesting(true);
+    setAddTestResult(null);
     try {
-      const updated = await updateChannel(ch.id, { is_enabled: !ch.is_enabled });
-      setChannels((prev) => prev.map((c) => c.id === ch.id ? updated : c));
-    } catch (e) { console.error(e); }
+      setAddTestResult(await testChannelConfig(addingKind, addingConfig));
+    } catch (e) {
+      setAddTestResult({
+        ok: false,
+        logs: [],
+        error: e instanceof Error ? e.message : "Test request failed",
+      });
+    } finally {
+      setAddTesting(false);
+    }
   };
 
   const handleDeleteChannel = async (id: number) => {
@@ -295,13 +309,6 @@ export default function Settings({ onClose }: Props) {
       await deleteChannel(id);
       setChannels((prev) => prev.filter((c) => c.id !== id));
     } catch (e) { console.error(e); }
-  };
-
-  const handleTestChannel = async (id: number) => {
-    setTestingId(id);
-    try { await testChannel(id); }
-    catch (e) { console.error(e); }
-    finally { setTestingId(null); }
   };
 
   const handleUpdateYtdlp = async () => {
@@ -961,30 +968,16 @@ export default function Settings({ onClose }: Props) {
                 {channels.length === 0 && (
                   <p className={styles.fieldHint}>No channels configured. Add one below.</p>
                 )}
-                {channels.map((ch) => {
-                  const meta = CHANNEL_KINDS.find((k) => k.kind === ch.kind);
-                  return (
-                    <div key={ch.id} className={styles.channelRow}>
-                      <span className={styles.channelKind}>{meta?.label ?? ch.kind}</span>
-                      <span className={styles.channelName}>{ch.name}</span>
-                      <div className={styles.channelActions}>
-                        <button
-                          className={styles.presetBtn}
-                          onClick={() => handleTestChannel(ch.id)}
-                          disabled={testingId === ch.id}
-                        >
-                          {testingId === ch.id ? "Testing…" : "Test"}
-                        </button>
-                        <label className={styles.toggle} style={{ marginBottom: 0 }}>
-                          <span className={styles.toggleTrack} data-checked={ch.is_enabled} onClick={() => handleToggleChannel(ch)}>
-                            <span className={styles.toggleThumb} />
-                          </span>
-                        </label>
-                        <button className={styles.channelDelete} onClick={() => handleDeleteChannel(ch.id)}>✕</button>
-                      </div>
-                    </div>
-                  );
-                })}
+                {channels.map((ch) => (
+                  <ChannelCard
+                    key={ch.id}
+                    ch={ch}
+                    onChange={(updated) =>
+                      setChannels((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+                    }
+                    onDelete={() => handleDeleteChannel(ch.id)}
+                  />
+                ))}
 
                 {/* Add channel form */}
                 <div className={styles.addChannel}>
@@ -1014,9 +1007,17 @@ export default function Settings({ onClose }: Props) {
                           />
                         </Field>
                       ))}
-                      <button className={styles.saveBtn} style={{ marginTop: 4 }} onClick={handleAddChannel} disabled={addingInProgress}>
-                        {addingInProgress ? "Adding…" : "Add channel"}
-                      </button>
+                      <div className={styles.editorActions}>
+                        <button className={styles.saveBtn} style={{ marginTop: 4 }} onClick={handleAddChannel} disabled={addingInProgress}>
+                          {addingInProgress ? "Adding…" : "Add channel"}
+                        </button>
+                        <button className={styles.presetBtn} onClick={handleTestAddConfig} disabled={addTesting}>
+                          {addTesting ? "Testing…" : "Test"}
+                        </button>
+                      </div>
+                      {addTestResult && (
+                        <TestLog result={addTestResult} onDismiss={() => setAddTestResult(null)} />
+                      )}
                     </>
                   )}
                 </div>
@@ -1073,6 +1074,161 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: stri
         {hint && <span className={styles.fieldHint}>{hint}</span>}
       </span>
     </label>
+  );
+}
+
+// ── Notification channel card (view / edit / test) ───────────────────────────
+
+function parseConfig(raw: string | null): Record<string, string> {
+  try {
+    const obj = JSON.parse(raw || "{}");
+    return obj && typeof obj === "object" ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+function TestLog({ result, onDismiss }: { result: ChannelTestResult; onDismiss: () => void }) {
+  const lines = [...result.logs];
+  if (result.error && !result.ok) lines.push("", result.error);
+  return (
+    <div className={styles.testLog} data-ok={result.ok}>
+      <div className={styles.testLogHead}>
+        <span className={styles.testLogStatus}>
+          {result.ok ? "✓ Test succeeded" : "✗ Test failed"}
+        </span>
+        <button className={styles.channelDelete} onClick={onDismiss} title="Dismiss">✕</button>
+      </div>
+      <pre className={styles.testLogBody}>{lines.join("\n") || "(no output)"}</pre>
+    </div>
+  );
+}
+
+function ChannelCard({
+  ch,
+  onChange,
+  onDelete,
+}: {
+  ch: NotificationChannel;
+  onChange: (c: NotificationChannel) => void;
+  onDelete: () => void;
+}) {
+  const meta = CHANNEL_KINDS.find((k) => k.kind === ch.kind);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(ch.name);
+  const [config, setConfig] = useState<Record<string, string>>(() => parseConfig(ch.config_json));
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<ChannelTestResult | null>(null);
+
+  const resetEdits = () => {
+    setName(ch.name);
+    setConfig(parseConfig(ch.config_json));
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const updated = await updateChannel(ch.id, {
+        name: name.trim() || ch.name,
+        config_json: JSON.stringify(config),
+      });
+      onChange(updated);
+      setEditing(false);
+    } catch (e) {
+      setResult({ ok: false, logs: [], error: e instanceof Error ? e.message : "Save failed" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runTest = async () => {
+    setTesting(true);
+    setResult(null);
+    try {
+      // While editing, test the working (unsaved) config; otherwise the saved channel.
+      setResult(editing ? await testChannelConfig(ch.kind, config) : await testChannel(ch.id));
+    } catch (e) {
+      setResult({
+        ok: false,
+        logs: [],
+        error: e instanceof Error ? e.message : "Test request failed",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const toggleEnabled = async () => {
+    try {
+      onChange(await updateChannel(ch.id, { is_enabled: !ch.is_enabled }));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  return (
+    <div className={styles.channelCard}>
+      <div className={styles.channelRow}>
+        <span className={styles.channelKind}>{meta?.label ?? ch.kind}</span>
+        <span className={styles.channelName}>{ch.name}</span>
+        <div className={styles.channelActions}>
+          <button className={styles.presetBtn} onClick={runTest} disabled={testing}>
+            {testing ? "Testing…" : "Test"}
+          </button>
+          <button
+            className={styles.presetBtn}
+            onClick={() => {
+              if (editing) resetEdits();
+              setEditing((v) => !v);
+            }}
+          >
+            {editing ? "Close" : "Edit"}
+          </button>
+          <label className={styles.toggle} style={{ marginBottom: 0 }}>
+            <span className={styles.toggleTrack} data-checked={ch.is_enabled} onClick={toggleEnabled}>
+              <span className={styles.toggleThumb} />
+            </span>
+          </label>
+          <button className={styles.channelDelete} onClick={onDelete}>✕</button>
+        </div>
+      </div>
+
+      {editing && (
+        <div className={styles.channelEditor}>
+          <Field label="Channel name">
+            <input className={styles.input} value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          {meta?.fields.map((f) => (
+            <Field key={f.key} label={f.label}>
+              <input
+                className={styles.input}
+                type={f.type ?? "text"}
+                placeholder={f.placeholder}
+                value={config[f.key] ?? ""}
+                onChange={(e) => setConfig((p) => ({ ...p, [f.key]: e.target.value }))}
+              />
+            </Field>
+          ))}
+          <div className={styles.editorActions}>
+            <button className={styles.saveBtn} onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+            <button
+              className={styles.presetBtn}
+              onClick={() => {
+                resetEdits();
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {result && <TestLog result={result} onDismiss={() => setResult(null)} />}
+    </div>
   );
 }
 

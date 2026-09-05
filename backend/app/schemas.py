@@ -191,6 +191,18 @@ class NotificationChannelInfo(BaseModel):
     created_at: datetime
 
 
+class ChannelTestRequest(BaseModel):
+    """Test an unsaved channel config (used by the add/edit form)."""
+    kind: str
+    config_json: str | None = None
+
+
+class ChannelTestResult(BaseModel):
+    ok: bool
+    logs: list[str]
+    error: str | None = None
+
+
 # ── Settings schemas ──────────────────────────────────────────────────────────
 
 class SettingItem(BaseModel):

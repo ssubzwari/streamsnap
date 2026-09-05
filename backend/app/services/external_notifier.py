@@ -9,15 +9,57 @@ checks suppression settings, then dispatches to each channel asynchronously.
 import asyncio
 import json
 import logging
+import re
 import smtplib
 import ssl
+import time
 from email.mime.text import MIMEText
+from typing import Callable
 
 import httpx
 
 from app.db import get_sessionmaker
 
 logger = logging.getLogger(__name__)
+
+# A sink senders push human-readable progress lines to. Defaults to a no-op so
+# the normal dispatch path stays quiet; the "Test channel" flow passes a list
+# collector so the UI can show a step-by-step debug log.
+LogFn = Callable[[str], None]
+
+
+def _noop(_msg: str) -> None:
+    pass
+
+
+_SECRET_RE = [
+    (re.compile(r"bot\d{5,}:[A-Za-z0-9_-]+"), "bot<token>"),
+    (re.compile(r"(hooks\.slack\.com/services/)[A-Za-z0-9/+_-]+"), r"\1<redacted>"),
+    (re.compile(r"(discord(?:app)?\.com/api/webhooks/)[0-9]+/[A-Za-z0-9._-]+"), r"\1<redacted>"),
+]
+
+
+def _redact(text: str) -> str:
+    """Strip webhook secrets / bot tokens out of a string bound for the UI."""
+    for pattern, repl in _SECRET_RE:
+        text = pattern.sub(repl, text)
+    return text
+
+
+async def _post_and_check(
+    log: LogFn, url: str, *, payload: dict | None = None, data: dict | None = None
+) -> None:
+    """POST helper shared by the webhook senders — logs the round-trip and
+    raises on any non-2xx so failures surface instead of passing silently."""
+    log(f"POST {_redact(url.split('?')[0])}")
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(url, json=payload, data=data)
+    log(f"← HTTP {resp.status_code} {resp.reason_phrase}")
+    if resp.status_code >= 400:
+        snippet = _redact(resp.text.strip())[:300]
+        if snippet:
+            log(f"← {snippet}")
+        raise RuntimeError(f"HTTP {resp.status_code} from {resp.request.url.host}")
 
 # Map notification kinds to their suppression setting key.
 # Note: create_notification() also gates on these before emitting; this is a
@@ -66,7 +108,11 @@ def _is_suppressed(kind: str, settings: dict[str, str]) -> bool:
 
 # ── Per-channel senders ───────────────────────────────────────────────────────
 
-async def _send_slack(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
+async def _send_slack(
+    cfg: dict, title: str, body: str | None, thumbnail: str | None, log: LogFn = _noop
+) -> None:
+    if not cfg.get("webhook_url"):
+        raise RuntimeError("Slack: webhook_url is required")
     text = f"*{title}*"
     if body:
         text += f"\n{body}"
@@ -74,11 +120,14 @@ async def _send_slack(cfg: dict, title: str, body: str | None, thumbnail: str | 
     # Slack supports image_url on attachments — adds a thumbnail card next to the text.
     if thumbnail:
         payload["attachments"] = [{"image_url": thumbnail, "fallback": title}]
-    async with httpx.AsyncClient(timeout=10) as client:
-        await client.post(cfg["webhook_url"], json=payload)
+    await _post_and_check(log, cfg["webhook_url"], payload=payload)
 
 
-async def _send_discord(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
+async def _send_discord(
+    cfg: dict, title: str, body: str | None, thumbnail: str | None, log: LogFn = _noop
+) -> None:
+    if not cfg.get("webhook_url"):
+        raise RuntimeError("Discord: webhook_url is required")
     content = f"**{title}**"
     if body:
         content += f"\n{body}"
@@ -86,49 +135,57 @@ async def _send_discord(cfg: dict, title: str, body: str | None, thumbnail: str 
     # Discord renders an image embed when given an `embeds[*].image.url`.
     if thumbnail:
         payload["embeds"] = [{"image": {"url": thumbnail}}]
-    async with httpx.AsyncClient(timeout=10) as client:
-        await client.post(cfg["webhook_url"], json=payload)
+    await _post_and_check(log, cfg["webhook_url"], payload=payload)
 
 
-async def _send_telegram(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
+async def _send_telegram(
+    cfg: dict, title: str, body: str | None, thumbnail: str | None, log: LogFn = _noop
+) -> None:
+    if not cfg.get("bot_token") or not cfg.get("chat_id"):
+        raise RuntimeError("Telegram: bot_token and chat_id are required")
     caption = f"<b>{title}</b>"
     if body:
         caption += f"\n{body}"
     base = f"https://api.telegram.org/bot{cfg['bot_token']}"
-    async with httpx.AsyncClient(timeout=10) as client:
-        if thumbnail:
-            # sendPhoto caption has a 1024-char limit; truncate to be safe.
-            await client.post(f"{base}/sendPhoto", json={
-                "chat_id": cfg["chat_id"],
-                "photo": thumbnail,
-                "caption": caption[:1024],
-                "parse_mode": "HTML",
-            })
-        else:
-            await client.post(f"{base}/sendMessage", json={
-                "chat_id": cfg["chat_id"],
-                "text": caption,
-                "parse_mode": "HTML",
-            })
+    log(f"chat_id={cfg['chat_id']}")
+    if thumbnail:
+        # sendPhoto caption has a 1024-char limit; truncate to be safe.
+        await _post_and_check(log, f"{base}/sendPhoto", payload={
+            "chat_id": cfg["chat_id"],
+            "photo": thumbnail,
+            "caption": caption[:1024],
+            "parse_mode": "HTML",
+        })
+    else:
+        await _post_and_check(log, f"{base}/sendMessage", payload={
+            "chat_id": cfg["chat_id"],
+            "text": caption,
+            "parse_mode": "HTML",
+        })
 
 
-async def _send_pushover(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
+async def _send_pushover(
+    cfg: dict, title: str, body: str | None, thumbnail: str | None, log: LogFn = _noop
+) -> None:
+    if not cfg.get("app_token") or not cfg.get("user_key"):
+        raise RuntimeError("Pushover: app_token and user_key are required")
     # Pushover supports an image attachment via multipart form upload, but
     # the free tier needs the image bytes. To keep this simple and avoid an
     # extra fetch, append the URL to the message instead.
     message = body or title
     if thumbnail:
         message = f"{message}\n{thumbnail}" if message else thumbnail
-    async with httpx.AsyncClient(timeout=10) as client:
-        await client.post("https://api.pushover.net/1/messages.json", data={
-            "token":   cfg["app_token"],
-            "user":    cfg["user_key"],
-            "title":   title,
-            "message": message,
-        })
+    await _post_and_check(log, "https://api.pushover.net/1/messages.json", data={
+        "token":   cfg["app_token"],
+        "user":    cfg["user_key"],
+        "title":   title,
+        "message": message,
+    })
 
 
-def _send_smtp_sync(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
+def _send_smtp_sync(
+    cfg: dict, title: str, body: str | None, thumbnail: str | None, log: LogFn = _noop
+) -> None:
     # Sender — must be a valid address. Fall back to username (usually an email)
     # rather than a synthetic @localhost that most relays reject.
     sender = cfg.get("from_email") or cfg.get("username")
@@ -177,29 +234,41 @@ def _send_smtp_sync(cfg: dict, title: str, body: str | None, thumbnail: str | No
     username = cfg.get("username")
     password = cfg.get("password", "")
 
+    log(f"Connecting to {host}:{port} (mode={mode})")
+    log(f"From {sender} → {to_addr}")
+
     ctx = ssl.create_default_context()
     if mode == "ssl":
         with smtplib.SMTP_SSL(host, port, context=ctx, timeout=30) as server:
+            log("TLS connection established (implicit SSL)")
             if username:
+                log(f"Authenticating as {username}")
                 server.login(username, password)
             server.send_message(msg, from_addr=sender, to_addrs=[to_addr])
     elif mode == "starttls":
         with smtplib.SMTP(host, port, timeout=30) as server:
             server.ehlo()
             server.starttls(context=ctx)
+            log("STARTTLS negotiated")
             server.ehlo()
             if username:
+                log(f"Authenticating as {username}")
                 server.login(username, password)
             server.send_message(msg, from_addr=sender, to_addrs=[to_addr])
     else:  # none
         with smtplib.SMTP(host, port, timeout=30) as server:
+            log("Connected (no encryption)")
             if username:
+                log(f"Authenticating as {username}")
                 server.login(username, password)
             server.send_message(msg, from_addr=sender, to_addrs=[to_addr])
+    log("Message accepted by server")
 
 
-async def _send_smtp(cfg: dict, title: str, body: str | None, thumbnail: str | None) -> None:
-    await asyncio.to_thread(_send_smtp_sync, cfg, title, body, thumbnail)
+async def _send_smtp(
+    cfg: dict, title: str, body: str | None, thumbnail: str | None, log: LogFn = _noop
+) -> None:
+    await asyncio.to_thread(_send_smtp_sync, cfg, title, body, thumbnail, log)
 
 
 _SENDERS = {
@@ -212,6 +281,38 @@ _SENDERS = {
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
+
+async def run_channel_test(kind: str, cfg: dict) -> dict:
+    """Send a test notification through one channel, capturing a step-by-step
+    log. Never raises — returns ``{"ok": bool, "logs": [str], "error": str|None}``
+    so the UI can render a debug panel on both success and failure."""
+    logs: list[str] = []
+
+    def log(msg: str) -> None:
+        logs.append(_redact(str(msg)))
+
+    sender = _SENDERS.get(kind)
+    if sender is None:
+        return {"ok": False, "logs": [f"Unknown channel kind: {kind}"],
+                "error": f"Unknown channel kind: {kind}"}
+
+    provided = sorted(k for k, v in cfg.items() if str(v).strip())
+    log(f"Channel: {kind}")
+    log(f"Config provided: {', '.join(provided) or '(none)'}")
+
+    started = time.perf_counter()
+    try:
+        await sender(cfg, "StreamSnap test notification",
+                     "If you can see this, the channel is configured correctly.",
+                     None, log)
+        log(f"OK — delivered in {(time.perf_counter() - started) * 1000:.0f} ms")
+        return {"ok": True, "logs": logs, "error": None}
+    except Exception as exc:  # noqa: BLE001 — every failure mode goes to the UI
+        detail = f"{type(exc).__name__}: {exc}"
+        log(f"FAILED after {(time.perf_counter() - started) * 1000:.0f} ms")
+        log(detail)
+        return {"ok": False, "logs": logs, "error": str(exc) or detail}
+
 
 async def dispatch(kind: str, title: str, body: str | None, thumbnail: str | None = None) -> None:
     """Fire-and-forget dispatcher called from create_notification()."""

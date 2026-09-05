@@ -5,6 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_session
 from app.models import Notification, NotificationChannel
 from app.schemas import (
+    ChannelTestRequest,
+    ChannelTestResult,
     NotificationChannelCreate,
     NotificationChannelInfo,
     NotificationChannelUpdate,
@@ -100,25 +102,39 @@ async def delete_channel(
     await session.commit()
 
 
-@router.post("/channels/{channel_id}/test", status_code=204)
+def _parse_config(raw: str | None) -> dict:
+    import json as _json
+    try:
+        cfg = _json.loads(raw or "{}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid config JSON: {exc}") from exc
+    if not isinstance(cfg, dict):
+        raise HTTPException(status_code=400, detail="Channel config must be a JSON object")
+    return cfg
+
+
+@router.post("/channels/test", response_model=ChannelTestResult)
+async def test_channel_config(body: ChannelTestRequest) -> ChannelTestResult:
+    """Test an unsaved channel config — used by the add/edit form so the user
+    can verify settings before saving."""
+    from app.services.external_notifier import run_channel_test
+    result = await run_channel_test(body.kind, _parse_config(body.config_json))
+    return ChannelTestResult(**result)
+
+
+@router.post("/channels/{channel_id}/test", response_model=ChannelTestResult)
 async def test_channel(
     channel_id: int,
     session: AsyncSession = Depends(get_session),
-) -> None:
-    """Send a test notification through the specified channel."""
-    import json as _json
+) -> ChannelTestResult:
+    """Send a test notification through a saved channel and return a
+    step-by-step debug log (success or failure)."""
+    from app.services.external_notifier import run_channel_test
     channel = await session.get(NotificationChannel, channel_id)
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
-    from app.services.external_notifier import _SENDERS
-    sender = _SENDERS.get(channel.kind)
-    if sender is None:
-        raise HTTPException(status_code=400, detail=f"Unknown channel kind: {channel.kind}")
-    cfg = _json.loads(channel.config_json or "{}")
-    try:
-        await sender(cfg, "StreamSnap test notification", "If you see this, the channel is working.")
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    result = await run_channel_test(channel.kind, _parse_config(channel.config_json))
+    return ChannelTestResult(**result)
 
 
 @router.post("/summary", status_code=204)
