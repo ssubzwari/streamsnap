@@ -14,6 +14,7 @@ import {
   type PlaylistEntry,
   pauseAllDownloads,
   previewPlaylist,
+  reorderQueue,
   resumeIncompleteDownloads,
   retryDownload,
 } from "@/api/downloads";
@@ -580,14 +581,18 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   }, []);
 
   // ── Derived stats ─────────────────────────────────────────────────────────
-  // In-progress downloads float to the top, queued keep their order below.
-  // (Array.prototype.sort is stable, so same-status rows stay put.)
+  // In-progress downloads float to the top; queued rows follow in queue order
+  // (queue_position ascending, nulls last), which is what the user reorders.
   const activeDownloads = downloads
     .filter((d) => d.status === "queued" || d.status === "downloading")
-    .sort(
-      (a, b) =>
-        (a.status === "downloading" ? 0 : 1) - (b.status === "downloading" ? 0 : 1),
-    );
+    .sort((a, b) => {
+      const rank = (a.status === "downloading" ? 0 : 1) - (b.status === "downloading" ? 0 : 1);
+      if (rank !== 0) return rank;
+      const pa = a.queue_position ?? Number.MAX_SAFE_INTEGER;
+      const pb = b.queue_position ?? Number.MAX_SAFE_INTEGER;
+      return pa - pb || a.id - b.id;
+    });
+  const queuedDownloads = activeDownloads.filter((d) => d.status === "queued");
   const completedDownloadsRaw = downloads.filter(
     (d) =>
       d.status === "completed" ||
@@ -813,6 +818,26 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       setSelectedCompleted((prev) => { const n = new Set(prev); n.delete(id); return n; });
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Move a queued download up/down the run order. Reorders the whole queued
+  // list and pushes it to the server; the WS updates reconcile.
+  const handleMoveQueued = async (id: number, dir: -1 | 1) => {
+    const order = queuedDownloads.map((d) => d.id);
+    const i = order.indexOf(id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    // optimistic: assign positions 1..N in the new order
+    order.forEach((did, idx) =>
+      dispatchDownloads({ type: "UPDATE", patch: { id: did, queue_position: idx + 1 } }),
+    );
+    try {
+      await reorderQueue(order);
+    } catch (err) {
+      console.error(err);
+      listDownloads().then((d) => dispatchDownloads({ type: "SET", downloads: d })).catch(console.error);
     }
   };
 
@@ -1519,7 +1544,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                 <col style={{ width: "96px" }} />
                 <col style={{ width: "92px" }} />
                 <col style={{ width: "52px" }} />
-                <col style={{ width: "44px" }} />
+                <col style={{ width: "84px" }} />
               </colgroup>
               <thead>
                 <tr>
@@ -1581,6 +1606,30 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                     </td>
                     <td>
                       <div className={styles.rowActions}>
+                        {d.status === "queued" && queuedDownloads.length > 1 && (
+                          <div className={styles.queueMove}>
+                            <button
+                              type="button"
+                              className={styles.queueMoveBtn}
+                              disabled={queuedDownloads[0]?.id === d.id}
+                              onClick={() => handleMoveQueued(d.id, -1)}
+                              title="Move up in queue"
+                              aria-label="Move up in queue"
+                            >
+                              <CaretIcon />
+                            </button>
+                            <button
+                              type="button"
+                              className={`${styles.queueMoveBtn} ${styles.queueMoveBtnDown}`}
+                              disabled={queuedDownloads[queuedDownloads.length - 1]?.id === d.id}
+                              onClick={() => handleMoveQueued(d.id, 1)}
+                              title="Move down in queue"
+                              aria-label="Move down in queue"
+                            >
+                              <CaretIcon />
+                            </button>
+                          </div>
+                        )}
                         <button
                           className={styles.iconBtn}
                           onClick={() => handleDelete(d.id)}

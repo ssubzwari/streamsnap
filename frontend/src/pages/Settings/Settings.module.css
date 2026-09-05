@@ -457,6 +457,7 @@
   font-size: var(--text-sm);
   color: var(--color-text);
   flex: 1;
+  min-width: 0; /* let the ellipsis on .channelEvents actually clip */
 }
 
 .channelActions {
@@ -512,6 +513,43 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.channelEvents {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eventPicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.eventGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.eventItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+@media (max-width: 560px) {
+  .eventGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .testLog {

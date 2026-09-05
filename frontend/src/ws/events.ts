@@ -15,6 +15,7 @@ export interface DownloadInfo {
   percent: number;
   speed: string | null;
   eta: number | null;
+  queue_position: number | null;
   format_spec: string | null;
   output_path: string | null;
   error_message: string | null;

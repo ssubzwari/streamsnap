@@ -61,27 +61,38 @@ async def _post_and_check(
             log(f"← {snippet}")
         raise RuntimeError(f"HTTP {resp.status_code} from {resp.request.url.host}")
 
-# Map notification kinds to their suppression setting key.
-# Note: create_notification() also gates on these before emitting; this is a
-# defense-in-depth check for callers that bypass the in-app Notification row
-# and dispatch directly (e.g. send_summary).
-_SUPPRESS_KEYS: dict[str, str] = {
-    "download_started":    "notify_on_download_start",
-    "completed":           "notify_on_complete",
-    "failed":              "notify_on_failed",
-    "playlist_completed":  "notify_on_playlist_complete",
-    "new_video":           "notify_on_new_video",
-    "subscription_error":  "notify_on_subscription_error",
-}
+# The notification kinds a channel can be subscribed to, in UI order.
+# `summary` is the periodic digest; the rest map 1:1 to notification kinds.
+CHANNEL_EVENT_KINDS: tuple[str, ...] = (
+    "download_started",
+    "completed",
+    "failed",
+    "playlist_completed",
+    "new_video",
+    "subscription_error",
+    "summary",
+)
+
+# Applied when a channel's events_json is NULL — matches the pre-per-channel
+# behaviour (everything that was on by default, plus the periodic summary).
+DEFAULT_CHANNEL_EVENTS: tuple[str, ...] = (
+    "completed",
+    "failed",
+    "playlist_completed",
+    "subscription_error",
+    "summary",
+)
+
+# Kinds that always go out to every enabled channel regardless of its filter —
+# operational alerts the user can't afford to silently miss.
+_ALWAYS_SEND: frozenset[str] = frozenset({"auth_required"})
 
 
-async def _load_settings() -> dict[str, str]:
-    from sqlalchemy import select
-    from app.models import Setting
-    SessionLocal = get_sessionmaker()
-    async with SessionLocal() as session:
-        result = await session.execute(select(Setting))
-        return {s.key: (s.value or "") for s in result.scalars()}
+def _channel_wants(kind: str, events: list[str] | None) -> bool:
+    if kind in _ALWAYS_SEND:
+        return True
+    allowed = events if events is not None else DEFAULT_CHANNEL_EVENTS
+    return kind in allowed
 
 
 async def _load_channels() -> list[dict]:
@@ -92,18 +103,20 @@ async def _load_channels() -> list[dict]:
         result = await session.execute(
             select(NotificationChannel).where(NotificationChannel.is_enabled == True)  # noqa: E712
         )
-        return [
-            {"kind": c.kind, "config": json.loads(c.config_json or "{}")}
-            for c in result.scalars()
-        ]
-
-
-def _is_suppressed(kind: str, settings: dict[str, str]) -> bool:
-    key = _SUPPRESS_KEYS.get(kind)
-    if key is None:
-        return False
-    # Suppressed when setting is explicitly "false"
-    return settings.get(key, "true") == "false"
+        channels = []
+        for c in result.scalars():
+            try:
+                events = json.loads(c.events_json) if c.events_json else None
+            except (ValueError, TypeError):
+                events = None
+            if events is not None and not isinstance(events, list):
+                events = None
+            channels.append({
+                "kind": c.kind,
+                "config": json.loads(c.config_json or "{}"),
+                "events": events,
+            })
+        return channels
 
 
 # ── Per-channel senders ───────────────────────────────────────────────────────
@@ -315,19 +328,22 @@ async def run_channel_test(kind: str, cfg: dict) -> dict:
 
 
 async def dispatch(kind: str, title: str, body: str | None, thumbnail: str | None = None) -> None:
-    """Fire-and-forget dispatcher called from create_notification()."""
-    try:
-        settings, channels = await asyncio.gather(
-            _load_settings(), _load_channels()
-        )
-    except Exception:
-        logger.exception("Failed to load settings/channels for dispatch")
-        return
+    """Fire-and-forget dispatcher called from create_notification() and
+    send_summary(). Each enabled channel receives the event only if it is in
+    that channel's own event filter (or the default set when unset).
 
-    if _is_suppressed(kind, settings):
+    The in-app toast gate lives in create_notification(); channels are
+    independent of it so e.g. a channel can carry only the periodic summary.
+    """
+    try:
+        channels = await _load_channels()
+    except Exception:
+        logger.exception("Failed to load channels for dispatch")
         return
 
     for ch in channels:
+        if not _channel_wants(kind, ch["events"]):
+            continue
         sender = _SENDERS.get(ch["kind"])
         if sender is None:
             continue

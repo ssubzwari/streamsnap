@@ -30,6 +30,14 @@ export async function listDownloads(): Promise<DownloadInfo[]> {
   return apiFetch<DownloadInfo[]>("/downloads");
 }
 
+/** Set the run order of the pending queue. Send the queued ids in desired order. */
+export async function reorderQueue(orderedIds: number[]): Promise<DownloadInfo[]> {
+  return apiFetch<DownloadInfo[]>("/downloads/queue/reorder", {
+    method: "POST",
+    body: JSON.stringify({ ordered_ids: orderedIds }),
+  });
+}
+
 export interface PlaylistEntry {
   id: string;
   url: string;

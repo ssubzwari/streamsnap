@@ -1,10 +1,13 @@
 """
 Notification dispatcher — creates a DB record and emits the WS event.
 
-Centralized suppression: every kind has a setting flag that gates whether
-the notification gets created at all. If the flag is "false" we short-circuit
-before touching the DB or WS — keeps the toast UI quiet without each caller
-having to check.
+Two independent decisions per notification:
+  1. In-app: the per-kind Setting flag (notify_on_*) gates whether the
+     Notification row + WS toast is created. "false" → no in-app noise.
+  2. External channels: always dispatched. Each NotificationChannel applies
+     its own event filter (external_notifier.DEFAULT_CHANNEL_EVENTS when
+     unset), so a channel can carry only the periodic summary even while the
+     in-app summary toast is off.
 """
 
 import asyncio
@@ -56,6 +59,11 @@ async def create_notification(
     thumbnail: str | None = None,
     payload: dict | None = None,
 ) -> NotificationInfo | None:
+    # External channels are dispatched regardless of the in-app gate — each
+    # channel filters on its own event list.
+    from app.services.external_notifier import dispatch
+    asyncio.create_task(dispatch(kind, title, body, thumbnail))
+
     if not await _is_kind_enabled(kind):
         return None
 
@@ -74,9 +82,4 @@ async def create_notification(
 
     info = NotificationInfo.model_validate(notif)
     await emit_notification_created(info.model_dump(mode="json"))
-
-    # Dispatch to external channels (fire-and-forget — never blocks the caller)
-    from app.services.external_notifier import dispatch
-    asyncio.create_task(dispatch(kind, title, body, thumbnail))
-
     return info

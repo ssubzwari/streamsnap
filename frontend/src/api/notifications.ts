@@ -5,11 +5,41 @@ import type { NotificationInfo } from "@/ws/events";
 
 export type ChannelKind = "smtp" | "slack" | "discord" | "telegram" | "pushover";
 
+/** Notification kinds a channel can subscribe to (matches backend CHANNEL_EVENT_KINDS). */
+export type ChannelEvent =
+  | "download_started"
+  | "completed"
+  | "failed"
+  | "playlist_completed"
+  | "new_video"
+  | "subscription_error"
+  | "summary";
+
+export const CHANNEL_EVENTS: { event: ChannelEvent; label: string; hint?: string }[] = [
+  { event: "download_started", label: "Download started" },
+  { event: "completed", label: "Download completed" },
+  { event: "failed", label: "Download failed" },
+  { event: "playlist_completed", label: "Playlist download completed" },
+  { event: "new_video", label: "New video detected" },
+  { event: "subscription_error", label: "Subscription check error" },
+  { event: "summary", label: "Periodic summary" },
+];
+
+/** Applied when a channel's events are unset (matches backend DEFAULT_CHANNEL_EVENTS). */
+export const DEFAULT_CHANNEL_EVENTS: ChannelEvent[] = [
+  "completed",
+  "failed",
+  "playlist_completed",
+  "subscription_error",
+  "summary",
+];
+
 export interface NotificationChannel {
   id: number;
   kind: ChannelKind;
   name: string;
   config_json: string | null;
+  events_json: string | null;
   is_enabled: boolean;
   created_at: string;
 }
@@ -18,13 +48,26 @@ export interface ChannelCreate {
   kind: ChannelKind;
   name: string;
   config_json?: string;
+  events_json?: string;
   is_enabled?: boolean;
 }
 
 export interface ChannelUpdate {
   name?: string;
   config_json?: string;
+  events_json?: string;
   is_enabled?: boolean;
+}
+
+/** Parse a channel's stored events, falling back to the default set. */
+export function channelEvents(ch: { events_json: string | null }): ChannelEvent[] {
+  if (!ch.events_json) return [...DEFAULT_CHANNEL_EVENTS];
+  try {
+    const arr = JSON.parse(ch.events_json);
+    return Array.isArray(arr) ? (arr as ChannelEvent[]) : [...DEFAULT_CHANNEL_EVENTS];
+  } catch {
+    return [...DEFAULT_CHANNEL_EVENTS];
+  }
 }
 
 export async function listNotifications(
