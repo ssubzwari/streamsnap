@@ -105,12 +105,33 @@ def extract_metadata(url: str) -> dict:
     }
 
 
+import re as _re
+
+# A YouTube "Show" URL — /show/VL<playlistId> — extracts with a useless
+# title and id of literally "show" (the path segment), which collapses every
+# such subscription into one "show" folder. The real playlist lives in the
+# browse-id: strip the "VL" prefix and hit /playlist?list=<id> instead, which
+# yields the proper show title ("Shaidai", "Leader", …) and the same entries.
+_YT_SHOW_RE = _re.compile(
+    r"^https?://(?:www\.)?youtube\.com/show/VL([A-Za-z0-9_-]+)", _re.IGNORECASE
+)
+
+
+def _normalize_playlist_url(url: str) -> str:
+    m = _YT_SHOW_RE.match(url.strip())
+    if m:
+        return f"https://www.youtube.com/playlist?list={m.group(1)}"
+    return url
+
+
 def extract_playlist(url: str) -> dict:
     """
     Fetch flat playlist metadata without downloading.
     Returns: {title, entries: [{id, url, title, upload_date}]}
     """
     from yt_dlp import YoutubeDL
+
+    url = _normalize_playlist_url(url)
 
     ydl_opts = {
         "quiet": True,
@@ -124,9 +145,15 @@ def extract_playlist(url: str) -> dict:
     if not info:
         raise ValueError("Could not extract playlist info from URL")
 
+    title = info.get("title") or info.get("playlist_title")
+    # Guard against yt-dlp handing back the generic path-segment title for
+    # URL shapes it doesn't fully resolve (e.g. an un-normalized /show/ link).
+    if not title or title.strip().lower() in ("show", "playlist", "videos"):
+        title = "Unknown Playlist"
+
     entries = info.get("entries") or []
     return {
-        "title": info.get("title") or info.get("playlist_title") or "Unknown Playlist",
+        "title": title,
         "entries": [
             {
                 "id": e.get("id", ""),
