@@ -38,9 +38,26 @@ downloads/**
 .env.*
 !.env.example
 
+# DB backups + credential material — a backup file is a full credential dump
+backups/
+db-backups/
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+service-account*.json
+*.tfstate
+*.tfstate.*
+
 # Claude Code local settings + machine-specific launch config
 .claude/settings.local.json
 .claude/launch.json
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Misc
 *.url

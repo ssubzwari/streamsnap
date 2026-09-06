@@ -354,6 +354,7 @@ yt-dlp  (YoutubeDL class; progress via progress_hooks)
 | `DB_URL` | `sqlite+aiosqlite:///./streamsnap.db` | Database URL |
 | `DOWNLOAD_DIR` | `./downloads` | Root download folder |
 | `YTDLP_DIR` | `""` (Docker: `/ytdlp`) | Isolated yt-dlp install dir |
+| `CORS_ORIGINS` | `""` (any origin) | Comma-separated cross-origin allowlist for REST + WebSocket; restrict it when reachable from an untrusted network |
 | `MAX_CONCURRENT_DOWNLOADS` | `1` | **Legacy** — set *Concurrent Downloads* in Settings -> Download |
 | `IMAGE_TAG` | `latest` | Docker image tag (compose only) |
 | `PORT` | `8088` | Host port (compose only) |

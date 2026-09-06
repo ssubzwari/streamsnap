@@ -75,7 +75,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    # Cross-origin REST callers (the Vite dev server, mainly). The bundled
+    # frontend is served same-origin and isn't subject to this. Override with
+    # the CORS_ORIGINS env var.
+    allow_origins=settings.cors_origin_list or ["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

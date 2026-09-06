@@ -17,5 +17,16 @@ class Settings(BaseSettings):
     # In Docker this is set to /ytdlp (a named volume) so updates persist.
     YTDLP_DIR: str = ""
 
+    # Origins allowed to open a Socket.IO / REST cross-origin connection.
+    # Empty (default) = allow any origin, which is fine for the intended
+    # single-user, private-network deployment. Set a comma-separated list
+    # (e.g. "http://localhost:5173,http://nas.local:8088") to restrict it when
+    # the instance is reachable from an untrusted network.
+    CORS_ORIGINS: str = ""
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
 
 settings = Settings()

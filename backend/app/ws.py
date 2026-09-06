@@ -1,5 +1,6 @@
 import socketio
 
+from app.config import settings
 from app.events import (
     DOWNLOAD_ADDED,
     DOWNLOAD_CANCELED,
@@ -12,9 +13,12 @@ from app.events import (
     SUBSCRIPTION_NEW_VIDEO,
 )
 
+# Same-origin connections (the browser loading the bundled frontend) always
+# work. CORS_ORIGINS only needs entries for cross-origin clients such as the
+# Vite dev server on :5173. Empty list → allow any origin (see config.py).
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins="*",
+    cors_allowed_origins=settings.cors_origin_list or "*",
     logger=False,
     engineio_logger=False,
 )
