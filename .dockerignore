@@ -1,0 +1,23 @@
+# Python
+backend/.venv/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/*.db
+backend/tests/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Data
+downloads/
+*.db
+*.log
+
+# Dev/CI
+.git/
+.github/
+.claude/
+*.md
+!README.md
