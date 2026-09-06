@@ -1,0 +1,82 @@
+name: Bug report
+description: Something isn't working the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill in as much as you can —
+        the environment details make most bugs much faster to track down.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and didn't find a duplicate
+          required: true
+        - label: I'm on a recent build (checked before reporting)
+          required: false
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A clear description of the bug, and what you expected instead.
+      placeholder: When I click ▶ on a completed audio download, the player shows a black video area instead of an audio player…
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps. Include the URL/kind of content if it's relevant (a playlist, a livestream, a specific site).
+      placeholder: |
+        1. Paste <url>
+        2. Pick "Audio only m4a"
+        3. Download completes
+        4. Click ▶
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running StreamSnap?
+      options:
+        - Docker (docker compose)
+        - Local dev (uvicorn + Vite)
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Image tag or commit
+      placeholder: "ghcr.io/ssubzwari/streamsnap:latest  •  or  sha-1a2b3c4"
+    validations:
+      required: true
+
+  - type: input
+    id: ytdlp
+    attributes:
+      label: yt-dlp version
+      description: Settings → Advanced → Database / yt-dlp
+      placeholder: "2026.09.01"
+
+  - type: input
+    id: os
+    attributes:
+      label: Host OS and browser
+      placeholder: "Windows 11 / Firefox 141  •  Ubuntu 24.04 (Docker) / Chrome 128"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Backend console output around the failure, and the browser console if it's a UI bug.
+        ⚠️ Redact SMTP passwords, bot tokens, and webhook URLs before pasting.
+      render: shell
