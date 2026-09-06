@@ -127,7 +127,9 @@ The current schema version is exposed at `GET /api/settings/db/schema-version` a
 
 ## Download Queue Order
 
-`downloads.queue_position` (int, lower runs first) is the pending queue order. `download_manager.enqueue()` assigns the next tail position to rows that don't have one; retry resets it to the tail, resume keeps it. The worker's in-memory `asyncio.Queue` is only a wake-up signal — `_process_queue` calls `_pick_next_job()` which selects the lowest-`queue_position` `queued` row from the DB, so reordering takes effect immediately. `POST /api/downloads/queue/reorder` (`{ordered_ids}`) rewrites positions; the Dashboard shows ▲▼ buttons on queued rows (`handleMoveQueued` → reorder). Queued rows sort by `queue_position` under the downloading rows.
+`downloads.queue_position` (int, lower runs first) is the pending queue order. `download_manager.enqueue()` assigns the next tail position to rows that don't have one; retry resets it to the tail, resume keeps it. The worker's in-memory `_job_queue` is a bare **wake token** (`_wake()` adds one, guarded so it never piles up) — never a per-download counter. `_process_queue` blocks on it, then drains: each pass `_pick_next_job()` selects the lowest-`queue_position` `queued` row from the DB (so a reorder takes effect immediately) and keeps going until the queue empties or all slots are busy. `_cleanup()` / `resume()` also `_wake()` so nothing strands. `start()` is idempotent — it recreates the asyncio primitives + progress queue so the FastAPI lifespan can cycle (tests).
+
+`POST /api/downloads/queue/reorder` (`{ordered_ids}`) rewrites positions. The Dashboard queued-row controls: **⤒ to top** (`handleQueueToTop([id])`), ▲▼ nudge (`handleMoveQueued`); a **"Move to top"** section-action appears when queued rows are selected (`handleQueueToTop(selectedQueuedIds)`). All go through `applyQueueOrder` → `reorderQueue`. Queued rows sort by `queue_position` under the downloading rows.
 
 ## Notification Dispatch
 

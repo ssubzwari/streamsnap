@@ -54,18 +54,15 @@ _CONCURRENCY_MIN = 1
 _CONCURRENCY_MAX = 12
 
 
-@dataclasses.dataclass
-class _Job:
-    download_id: int
-    url: str
-    format_spec: str
-    output_dir: str | None = None  # None → use settings.DOWNLOAD_DIR
+# Wake token for the worker loop. Contents are meaningless — the loop always
+# re-reads the runnable job from the DB — so any object works.
+_WAKE = object()
 
 
 class DownloadManager:
     def __init__(self) -> None:
         self._executor: ThreadPoolExecutor | None = None
-        self._job_queue: asyncio.Queue[_Job] = asyncio.Queue()
+        self._job_queue: asyncio.Queue[object] = asyncio.Queue()
         self._progress_queue: queue.Queue = queue.Queue()
         self._active_futures: dict[int, Future] = {}
         self._cancel_events: dict[int, threading.Event] = {}
@@ -89,6 +86,24 @@ class DownloadManager:
         self._slot_free.set()
 
     async def start(self) -> None:
+        # Idempotent: tear down a previous run first. Matters for the test
+        # suite, which spins the FastAPI lifespan up and down repeatedly
+        # against this module-level singleton.
+        await self.stop()
+        self._active_futures.clear()
+        self._cancel_events.clear()
+        self._paused_ids.clear()
+
+        # Recreate the asyncio primitives so they bind to *this* event loop.
+        # (Tests run each lifespan in a fresh loop; reusing a Queue/Event from
+        # a closed loop raises "attached to a different loop".)
+        self._job_queue = asyncio.Queue()
+        self._resume_event = asyncio.Event()
+        self._slot_free = asyncio.Event()
+        # Fresh progress channel — drop any messages a previous run's worker
+        # threads left behind (stale ids could otherwise land on a new row).
+        self._progress_queue = queue.Queue()
+
         self._executor = ThreadPoolExecutor(
             max_workers=_EXECUTOR_MAX_WORKERS,
             thread_name_prefix="ytdl-worker",
@@ -167,17 +182,32 @@ class DownloadManager:
         self._paused = False
         self._pause_reason = None
         self._resume_event.set()
+        self._wake()
         # _paused_ids is left to drain as the cancelled downloads' final
         # messages arrive (handled in _relay_progress).
         await emit_downloads_paused({"paused": False, "reason": None})
 
     async def stop(self) -> None:
-        if self._worker_task:
-            self._worker_task.cancel()
-        if self._relay_task:
-            self._relay_task.cancel()
-        if self._executor:
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        for task in (self._worker_task, self._relay_task):
+            if task is None or task.done():
+                continue
+            task.cancel()
+            # Only await a task that belongs to the loop we're on — a task
+            # left over from a previous (closed) loop can only be dropped.
+            if running_loop is not None and task.get_loop() is running_loop:
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+        self._worker_task = None
+        self._relay_task = None
+        if self._executor is not None:
             self._executor.shutdown(wait=False, cancel_futures=True)
+            self._executor = None
 
     async def enqueue(
         self,
@@ -186,10 +216,20 @@ class DownloadManager:
         format_spec: str,
         output_dir: str | None = None,
     ) -> None:
+        # url / format_spec / output_dir are re-read from the DB by
+        # _pick_next_job when the download actually starts — passed here only
+        # for a stable call signature.
         await self._assign_queue_position(download_id)
-        await self._job_queue.put(
-            _Job(download_id=download_id, url=url, format_spec=format_spec, output_dir=output_dir)
-        )
+        self._wake()
+
+    def _wake(self) -> None:
+        """Nudge the worker loop to re-check the DB for a runnable job.
+
+        A single pending token is enough — the loop re-derives everything from
+        the DB each pass — so don't pile them up.
+        """
+        if self._job_queue.empty():
+            self._job_queue.put_nowait(_WAKE)
 
     async def _assign_queue_position(self, download_id: int) -> None:
         """Give a freshly-queued download the next position at the tail. Rows
@@ -362,72 +402,82 @@ class DownloadManager:
             return {s.key: s.value for s in result.scalars()}
 
     async def _process_queue(self) -> None:
-        loop = asyncio.get_running_loop()
         while True:
-            await self._resume_event.wait()  # block here while paused
-
-            # Wait for a concurrency slot to free up.
-            while self._running >= self._concurrency:
-                self._slot_free.clear()
-                await self._slot_free.wait()
-                await self._resume_event.wait()
-
+            # Wait to be nudged — by enqueue(), resume(), or a completion.
+            # Blocking here first (rather than picking straight away) keeps the
+            # loop from racing resume_incomplete() on startup.
             await self._job_queue.get()
-            if self._paused:
-                # Pause landed while this job was in flight — drop it; the row
-                # is still "queued" and resume() re-enqueues it from the DB.
-                continue
 
-            # Ignore the dequeued job's identity — pick the actual next
-            # download by the (reorderable) queue_position order in the DB.
-            picked = await self._pick_next_job()
-            if picked is None:
-                continue
-            job_id, job_url, job_fmt, job_dir = picked
+            # Drain: keep starting runnable downloads until the queue empties
+            # or every slot is busy, re-deriving the next one from the DB
+            # (queue_position order) each pass. The wake queue is only a
+            # "something changed, look again" signal — never a per-download
+            # token count, which used to drift and stall the rest of the queue
+            # whenever a pass found nothing runnable.
+            while True:
+                await self._resume_event.wait()  # block here while paused
 
-            cancel_event = threading.Event()
-            self._cancel_events[job_id] = cancel_event
+                while self._running >= self._concurrency:
+                    self._slot_free.clear()
+                    await self._slot_free.wait()
+                    await self._resume_event.wait()
 
-            await self._update_db(job_id, status="downloading")
-            await self._notify_started(job_id)
+                if self._paused:
+                    break
 
-            app_settings = await self._load_app_settings()
+                picked = await self._pick_next_job()
+                if picked is None:
+                    break
+                job_id, job_url, job_fmt, job_dir = picked
 
-            self._running += 1
-            self._counted_ids.add(job_id)
-            future: Future = self._executor.submit(
-                run_download,
-                job_id,
-                job_url,
-                job_fmt,
-                job_dir or settings.DOWNLOAD_DIR,
-                self._progress_queue,
-                cancel_event,
-                app_settings,
-            )
-            self._active_futures[job_id] = future
+                await self._start_job(job_id, job_url, job_fmt, job_dir)
 
-            def _on_done(f: Future, did: int = job_id) -> None:
-                if f.cancelled():
-                    self._progress_queue.put({"type": "canceled", "id": did, "error": "Canceled"})
-                elif f.exception() is not None:
-                    self._progress_queue.put({"type": "error", "id": did, "error": str(f.exception())})
-                else:
-                    # run_download returns the final path (after any episode-number
-                    # rename that happens post-merge). Correct the DB row — the
-                    # progress hook's "finished" fired earlier with the pre-rename
-                    # (and often pre-merge) name.
-                    try:
-                        path = f.result()
-                    except Exception:
-                        path = None
-                    if path:
-                        self._progress_queue.put(
-                            {"type": "path_fixed", "id": did, "output_path": path}
-                        )
-                # "finished" type is already put by the progress hook
+    async def _start_job(
+        self, job_id: int, job_url: str, job_fmt: str, job_dir: str | None
+    ) -> None:
+        cancel_event = threading.Event()
+        self._cancel_events[job_id] = cancel_event
 
-            future.add_done_callback(_on_done)
+        await self._update_db(job_id, status="downloading")
+        await self._notify_started(job_id)
+
+        app_settings = await self._load_app_settings()
+
+        self._running += 1
+        self._counted_ids.add(job_id)
+        future: Future = self._executor.submit(
+            run_download,
+            job_id,
+            job_url,
+            job_fmt,
+            job_dir or settings.DOWNLOAD_DIR,
+            self._progress_queue,
+            cancel_event,
+            app_settings,
+        )
+        self._active_futures[job_id] = future
+
+        def _on_done(f: Future, did: int = job_id) -> None:
+            if f.cancelled():
+                self._progress_queue.put({"type": "canceled", "id": did, "error": "Canceled"})
+            elif f.exception() is not None:
+                self._progress_queue.put({"type": "error", "id": did, "error": str(f.exception())})
+            else:
+                # run_download returns the final path (after any episode-number
+                # rename that happens post-merge). Correct the DB row — the
+                # progress hook's "finished" fired earlier with the pre-rename
+                # (and often pre-merge) name.
+                try:
+                    path = f.result()
+                except Exception:
+                    path = None
+                if path:
+                    self._progress_queue.put(
+                        {"type": "path_fixed", "id": did, "output_path": path}
+                    )
+            # "finished" type is already put by the progress hook
+
+        future.add_done_callback(_on_done)
 
     async def _relay_progress(self) -> None:
         loop = asyncio.get_running_loop()
@@ -600,6 +650,9 @@ class DownloadManager:
             self._counted_ids.discard(download_id)
             self._running = max(0, self._running - 1)
             self._slot_free.set()
+        # A slot just freed (or a dead row was reaped) — make sure the worker
+        # loop wakes to run whatever is next in the queue.
+        self._wake()
 
     async def _update_db(self, download_id: int, **kwargs) -> None:
         from datetime import datetime
