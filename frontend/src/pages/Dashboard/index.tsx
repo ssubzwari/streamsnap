@@ -122,6 +122,14 @@ const CaretIcon = () => (
   </svg>
 );
 
+// "Jump to the front of the queue" — a caret with a bar over it.
+const ToTopIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="4" x2="19" y2="4" />
+    <polyline points="6 16 12 10 18 16" />
+  </svg>
+);
+
 // ── Section reorder control ───────────────────────────────────────────────────
 // Two small up/down buttons in a section header — swap this section with its
 // neighbour in the persisted order. Simpler and more touch-friendly than
@@ -821,15 +829,9 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     }
   };
 
-  // Move a queued download up/down the run order. Reorders the whole queued
-  // list and pushes it to the server; the WS updates reconcile.
-  const handleMoveQueued = async (id: number, dir: -1 | 1) => {
-    const order = queuedDownloads.map((d) => d.id);
-    const i = order.indexOf(id);
-    const j = i + dir;
-    if (i < 0 || j < 0 || j >= order.length) return;
-    [order[i], order[j]] = [order[j], order[i]];
-    // optimistic: assign positions 1..N in the new order
+  // Push a new run order to the server (optimistic: renumber locally first,
+  // WS updates reconcile).
+  const applyQueueOrder = async (order: number[]) => {
     order.forEach((did, idx) =>
       dispatchDownloads({ type: "UPDATE", patch: { id: did, queue_position: idx + 1 } }),
     );
@@ -840,6 +842,32 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       listDownloads().then((d) => dispatchDownloads({ type: "SET", downloads: d })).catch(console.error);
     }
   };
+
+  // Move a queued download one step up/down the run order.
+  const handleMoveQueued = async (id: number, dir: -1 | 1) => {
+    const order = queuedDownloads.map((d) => d.id);
+    const i = order.indexOf(id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    await applyQueueOrder(order);
+  };
+
+  // Send one or more queued downloads to the front of the queue — they run
+  // next, right after whatever is downloading now. Keeps their relative order.
+  const handleQueueToTop = async (ids: number[]) => {
+    const front = new Set(ids);
+    const order = [
+      ...queuedDownloads.filter((d) => front.has(d.id)).map((d) => d.id),
+      ...queuedDownloads.filter((d) => !front.has(d.id)).map((d) => d.id),
+    ];
+    if (order.length === 0) return;
+    await applyQueueOrder(order);
+  };
+
+  const selectedQueuedIds = queuedDownloads
+    .filter((d) => selectedActive.has(d.id))
+    .map((d) => d.id);
 
   // ── Handlers: bulk actions ────────────────────────────────────────────────
   const handleClearSelected = async (ids: Set<number>) => {
@@ -1493,6 +1521,15 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
             </button>
             <div className={styles.sectionActions}>
               <ReorderControls id="downloading" order={sectionOrder} move={moveSection} />
+              {selectedQueuedIds.length > 0 && (
+                <button
+                  className={styles.ghostBtn}
+                  onClick={() => handleQueueToTop(selectedQueuedIds)}
+                  title="Move the selected queued downloads to the front of the queue"
+                >
+                  Move to top
+                </button>
+              )}
               <button
                 className={styles.ghostBtn}
                 disabled={selectedActive.size === 0}
@@ -1610,24 +1647,36 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                           <div className={styles.queueMove}>
                             <button
                               type="button"
-                              className={styles.queueMoveBtn}
+                              className={styles.queueTopBtn}
                               disabled={queuedDownloads[0]?.id === d.id}
-                              onClick={() => handleMoveQueued(d.id, -1)}
-                              title="Move up in queue"
-                              aria-label="Move up in queue"
+                              onClick={() => handleQueueToTop([d.id])}
+                              title="Move to top of the queue (downloads next)"
+                              aria-label="Move to top of the queue"
                             >
-                              <CaretIcon />
+                              <ToTopIcon />
                             </button>
-                            <button
-                              type="button"
-                              className={`${styles.queueMoveBtn} ${styles.queueMoveBtnDown}`}
-                              disabled={queuedDownloads[queuedDownloads.length - 1]?.id === d.id}
-                              onClick={() => handleMoveQueued(d.id, 1)}
-                              title="Move down in queue"
-                              aria-label="Move down in queue"
-                            >
-                              <CaretIcon />
-                            </button>
+                            <div className={styles.queueNudge}>
+                              <button
+                                type="button"
+                                className={styles.queueMoveBtn}
+                                disabled={queuedDownloads[0]?.id === d.id}
+                                onClick={() => handleMoveQueued(d.id, -1)}
+                                title="Move up in queue"
+                                aria-label="Move up in queue"
+                              >
+                                <CaretIcon />
+                              </button>
+                              <button
+                                type="button"
+                                className={`${styles.queueMoveBtn} ${styles.queueMoveBtnDown}`}
+                                disabled={queuedDownloads[queuedDownloads.length - 1]?.id === d.id}
+                                onClick={() => handleMoveQueued(d.id, 1)}
+                                title="Move down in queue"
+                                aria-label="Move down in queue"
+                              >
+                                <CaretIcon />
+                              </button>
+                            </div>
                           </div>
                         )}
                         <button
