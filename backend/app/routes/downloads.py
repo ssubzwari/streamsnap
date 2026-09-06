@@ -638,6 +638,43 @@ async def open_download(
     return Response(status_code=204)
 
 
+_AUDIO_MIME_BY_EXT = {
+    ".m4a": "audio/mp4",
+    ".m4b": "audio/mp4",
+    ".mp4": "audio/mp4",
+    ".aac": "audio/aac",
+    ".mp3": "audio/mpeg",
+    ".opus": "audio/ogg",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".webm": "audio/webm",
+    ".flac": "audio/flac",
+    ".wav": "audio/wav",
+}
+
+
+def _stream_media_type(download: Download, filepath: str) -> str:
+    """Media type for inline playback.
+
+    yt-dlp audio-only downloads frequently land in an ``.mp4`` / ``.webm``
+    container that ``mimetypes`` reports as ``video/*`` — the browser then
+    opens a black <video> element for a file that is really audio. When the
+    download carries no video stream, force an ``audio/*`` type so it plays
+    in an audio player.
+    """
+    import os
+
+    guessed, _ = mimetypes.guess_type(filepath)
+    if download.vcodec == "none":
+        ext = os.path.splitext(filepath)[1].lower()
+        return (
+            _AUDIO_MIME_BY_EXT.get(ext)
+            or (guessed if guessed and guessed.startswith("audio/") else None)
+            or "audio/mpeg"
+        )
+    return guessed or "application/octet-stream"
+
+
 def _resolve_output_path(stored: str | None) -> str | None:
     """Return an existing on-disk path for a download, tolerating post-merge
     path rewrites.
@@ -734,16 +771,12 @@ async def stream_download(
     if not filepath:
         raise HTTPException(status_code=404, detail="File not found on disk")
 
-    media_type, _ = mimetypes.guess_type(filepath)
-    if media_type is None:
-        media_type = "application/octet-stream"
-
     # content_disposition_type="inline" tells the browser to render the file
     # in-page instead of triggering a download. Without this, FileResponse
     # defaults to "attachment" whenever a filename is supplied.
     return FileResponse(
         filepath,
-        media_type=media_type,
+        media_type=_stream_media_type(download, filepath),
         content_disposition_type="inline",
     )
 
