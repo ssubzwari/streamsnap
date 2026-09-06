@@ -14,10 +14,9 @@ import {
  * sent to the server (single-user app, purely cosmetic).
  */
 
-export type SectionId = "advanced" | "downloading" | "completed" | "subscriptions";
+export type SectionId = "downloading" | "completed" | "subscriptions";
 
 export const DEFAULT_SECTION_ORDER: SectionId[] = [
-  "advanced",
   "downloading",
   "completed",
   "subscriptions",
@@ -26,7 +25,7 @@ export const DEFAULT_SECTION_ORDER: SectionId[] = [
 interface UiPrefs {
   /** Show the collapsible download-activity / throughput meter. */
   statsMeter: boolean;
-  /** Top-to-bottom order of the four rearrangeable dashboard sections. */
+  /** Top-to-bottom order of the rearrangeable dashboard sections. */
   sectionOrder: SectionId[];
 }
 
