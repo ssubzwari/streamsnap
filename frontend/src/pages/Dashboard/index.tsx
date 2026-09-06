@@ -1315,9 +1315,154 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
           {submitError && (
             <p className={styles.errorMsg}>{submitError}</p>
           )}
+          {/* Advanced options (collapsible) */}
+          <div className={styles.advancedInline}>
+            <button
+              type="button"
+              className={styles.advancedToggle}
+              onClick={() => setAdvancedOpen((o) => !o)}
+              aria-expanded={advancedOpen}
+            >
+              <span className={styles.advancedToggleIcon}>
+                {advancedOpen ? "▾" : "▸"}
+              </span>
+              Advanced options
+            </button>
+
+            {advancedOpen && (
+              <div className={styles.advancedPanel}>
+                {/* OUTPUT */}
+                <div className={styles.advancedGroup}>
+                  <p className={styles.advancedGroupTitle}>OUTPUT</p>
+                  <div className={styles.advancedRow}>
+                    <label className={styles.advancedLabel}>
+                      Download Folder
+                      <input
+                        className={styles.advancedInput}
+                        value={downloadFolder}
+                        onChange={(e) => setDownloadFolder(e.target.value)}
+                        onBlur={handleSaveSettings}
+                      />
+                    </label>
+                    <label className={styles.advancedLabel}>
+                      Custom Name Profile
+                      <select className={styles.advancedSelect}>
+                        <option>Default</option>
+                      </select>
+                    </label>
+                    <label className={styles.advancedCheckbox}>
+                      <input type="checkbox" disabled />
+                      Split by chapters
+                    </label>
+                  </div>
+                </div>
+
+                {/* BEHAVIOR */}
+                <div className={styles.advancedGroup}>
+                  <p className={styles.advancedGroupTitle}>BEHAVIOR</p>
+                  <div className={styles.advancedRow}>
+                    <label className={styles.advancedLabel}>
+                      Auto Start
+                      <select className={styles.advancedSelect} defaultValue="yes">
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+                    <label className={styles.advancedLabel}>
+                      Items Limit
+                      <input
+                        className={styles.advancedInput}
+                        placeholder="Default"
+                        type="number"
+                        min="1"
+                      />
+                    </label>
+                    <label className={styles.advancedLabel}>
+                      Subscription Check (days)
+                      <input
+                        className={styles.advancedInput}
+                        type="number"
+                        min="0.25"
+                        step="0.25"
+                        value={subCheckInterval}
+                        onChange={(e) => setSubCheckInterval(e.target.value)}
+                        onBlur={handleSaveSettings}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* YT-DLP */}
+                <div className={styles.advancedGroup}>
+                  <p className={styles.advancedGroupTitle}>YT-DLP</p>
+                  <div className={styles.advancedRow}>
+                    <label className={`${styles.advancedLabel} ${styles.advancedLabelFull}`}>
+                      Option Presets
+                      <input
+                        className={styles.advancedInput}
+                        placeholder="e.g. --no-playlist --write-subs"
+                        value={optionPresets}
+                        onChange={(e) => setOptionPresets(e.target.value)}
+                        onBlur={handleSaveSettings}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* TOOLS */}
+                <div className={styles.advancedGroup}>
+                  <p className={styles.advancedGroupTitle}>TOOLS</p>
+                  <div className={styles.advancedRow}>
+                    <div className={styles.toolsCol}>
+                      <p className={styles.toolsSubTitle}>Cookies</p>
+                      <button className={styles.toolBtn}>Upload Cookies</button>
+                    </div>
+                    <div className={styles.toolsCol}>
+                      <p className={styles.toolsSubTitle}>Bulk Actions</p>
+                      <div className={styles.bulkActions}>
+                        <button
+                          className={styles.toolBtn}
+                          onClick={() => setImportOpen((o) => !o)}
+                        >
+                          Import URLs
+                        </button>
+                        <button className={styles.toolBtn} onClick={handleExportUrls}>
+                          Export URLs
+                        </button>
+                        <button className={styles.toolBtn} onClick={handleCopyUrls}>
+                          Copy URLs
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  {importOpen && (
+                    <div className={styles.importBox}>
+                      <textarea
+                        className={styles.importTextarea}
+                        rows={5}
+                        placeholder="One URL per line"
+                        value={importText}
+                        onChange={(e) => setImportText(e.target.value)}
+                      />
+                      <div className={styles.importActions}>
+                        <button className={styles.importBtn} onClick={handleImport}>
+                          Import
+                        </button>
+                        <button
+                          className={styles.cancelBtn}
+                          onClick={() => setImportOpen(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* ── Advanced Options accordion ── */}
         {showStatsMeter && (
           <StatsMeter
             speedBps={downloadSpeedBps}
@@ -1326,153 +1471,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
             completedBytes={doneBytes}
           />
         )}
-
-        <div className={styles.advancedSection} style={sectionOrderStyle("advanced")}>
-          <div className={styles.advancedHeaderRow}>
-            <button
-              className={styles.advancedToggle}
-              onClick={() => setAdvancedOpen((o) => !o)}
-            >
-              <span className={styles.advancedToggleIcon}>
-                {advancedOpen ? "\u25BE" : "\u25B8"}
-              </span>
-              Advanced Options
-            </button>
-            <ReorderControls id="advanced" order={sectionOrder} move={moveSection} />
-          </div>
-
-          {advancedOpen && (
-            <div className={styles.advancedPanel}>
-              {/* OUTPUT */}
-              <div className={styles.advancedGroup}>
-                <p className={styles.advancedGroupTitle}>OUTPUT</p>
-                <div className={styles.advancedRow}>
-                  <label className={styles.advancedLabel}>
-                    Download Folder
-                    <input
-                      className={styles.advancedInput}
-                      value={downloadFolder}
-                      onChange={(e) => setDownloadFolder(e.target.value)}
-                      onBlur={handleSaveSettings}
-                    />
-                  </label>
-                  <label className={styles.advancedLabel}>
-                    Custom Name Profile
-                    <select className={styles.advancedSelect}>
-                      <option>Default</option>
-                    </select>
-                  </label>
-                  <label className={styles.advancedCheckbox}>
-                    <input type="checkbox" disabled />
-                    Split by chapters
-                  </label>
-                </div>
-              </div>
-
-              {/* BEHAVIOR */}
-              <div className={styles.advancedGroup}>
-                <p className={styles.advancedGroupTitle}>BEHAVIOR</p>
-                <div className={styles.advancedRow}>
-                  <label className={styles.advancedLabel}>
-                    Auto Start
-                    <select className={styles.advancedSelect} defaultValue="yes">
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  </label>
-                  <label className={styles.advancedLabel}>
-                    Items Limit
-                    <input
-                      className={styles.advancedInput}
-                      placeholder="Default"
-                      type="number"
-                      min="1"
-                    />
-                  </label>
-                  <label className={styles.advancedLabel}>
-                    Subscription Check (days)
-                    <input
-                      className={styles.advancedInput}
-                      type="number"
-                      min="0.25"
-                      step="0.25"
-                      value={subCheckInterval}
-                      onChange={(e) => setSubCheckInterval(e.target.value)}
-                      onBlur={handleSaveSettings}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* YT-DLP */}
-              <div className={styles.advancedGroup}>
-                <p className={styles.advancedGroupTitle}>YT-DLP</p>
-                <div className={styles.advancedRow}>
-                  <label className={`${styles.advancedLabel} ${styles.advancedLabelFull}`}>
-                    Option Presets
-                    <input
-                      className={styles.advancedInput}
-                      placeholder="e.g. --no-playlist --write-subs"
-                      value={optionPresets}
-                      onChange={(e) => setOptionPresets(e.target.value)}
-                      onBlur={handleSaveSettings}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* TOOLS */}
-              <div className={styles.advancedGroup}>
-                <p className={styles.advancedGroupTitle}>TOOLS</p>
-                <div className={styles.advancedRow}>
-                  <div className={styles.toolsCol}>
-                    <p className={styles.toolsSubTitle}>Cookies</p>
-                    <button className={styles.toolBtn}>Upload Cookies</button>
-                  </div>
-                  <div className={styles.toolsCol}>
-                    <p className={styles.toolsSubTitle}>Bulk Actions</p>
-                    <div className={styles.bulkActions}>
-                      <button
-                        className={styles.toolBtn}
-                        onClick={() => setImportOpen((o) => !o)}
-                      >
-                        Import URLs
-                      </button>
-                      <button className={styles.toolBtn} onClick={handleExportUrls}>
-                        Export URLs
-                      </button>
-                      <button className={styles.toolBtn} onClick={handleCopyUrls}>
-                        Copy URLs
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                {importOpen && (
-                  <div className={styles.importBox}>
-                    <textarea
-                      className={styles.importTextarea}
-                      rows={5}
-                      placeholder="One URL per line"
-                      value={importText}
-                      onChange={(e) => setImportText(e.target.value)}
-                    />
-                    <div className={styles.importActions}>
-                      <button className={styles.importBtn} onClick={handleImport}>
-                        Import
-                      </button>
-                      <button
-                        className={styles.cancelBtn}
-                        onClick={() => setImportOpen(false)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* ── Downloading section ── */}
         <section className={styles.tableSection} style={sectionOrderStyle("downloading")}>

@@ -1308,7 +1308,7 @@ function ThemeTab() {
       />
       <Field
         label="Dashboard layout"
-        hint="Reorder the Advanced Options / Downloading / Completed / Subscriptions blocks with the ▲▼ buttons in each section header."
+        hint="Reorder the Downloading / Completed / Subscriptions blocks with the ▲▼ buttons in each section header."
       >
         <button
           type="button"

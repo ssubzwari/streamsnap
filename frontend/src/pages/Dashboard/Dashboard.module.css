@@ -305,42 +305,31 @@
   border-radius: var(--radius-sm);
 }
 
-/* ── Advanced options accordion ─────────────────────────────────────────────── */
+/* ── Advanced options — collapsible, tucked into the input bar ──────────────── */
 
-.advancedSection {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  box-shadow: var(--shadow-card), var(--edge-hi);
-}
-
-.advancedHeaderRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding-right: var(--space-3);
+/* Sits as the last child of .inputSection; the negative inline margin lets the
+   divider run edge-to-edge of the input card. */
+.advancedInline {
+  margin: var(--space-1) calc(-1 * var(--space-4)) 0;
+  padding: var(--space-3) var(--space-4) 0;
+  border-top: 1px solid var(--color-border);
 }
 
 .advancedToggle {
-  flex: 1 1 auto;
-  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-1) 0;
   background: transparent;
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   text-align: left;
-  transition: color var(--dur-fast) var(--ease-out),
-    background var(--dur-fast) var(--ease-out);
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .advancedToggle:hover {
   color: var(--color-text);
-  background: var(--color-surface-hi);
 }
 
 .advancedToggleIcon {
@@ -351,8 +340,7 @@
 }
 
 .advancedPanel {
-  border-top: 1px solid var(--color-border);
-  padding: var(--space-4);
+  padding: var(--space-3) 0 var(--space-1);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);

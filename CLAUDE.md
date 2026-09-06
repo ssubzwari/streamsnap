@@ -183,7 +183,8 @@ Tokens live in `frontend/src/styles/tokens.css`. All values must come from token
 - **Motion:** Always `cubic-bezier(0.16, 1, 0.3, 1)` with `--dur-fast` (120ms), `--dur-base` (200ms), or `--dur-slow` (320ms). `global.css` collapses all motion under `prefers-reduced-motion: reduce`.
 - Styling: CSS Modules only — no Tailwind, no CSS-in-JS
 - **Responsive:** `Dashboard.module.css` breakpoints at 900px (input/format rows wrap) and 640px (tables → stacked cards; `data-label` on a `<td>` becomes its inline label; `.rowQueued` collapses queued downloads to one line). Body must never scroll horizontally.
-- **Dashboard section order:** the four rearrangeable blocks (advanced / downloading / completed / subscriptions) are reordered purely by CSS flex `order` — each gets `style={{ order: sectionOrder.indexOf(id) + 1 }}`; fixed items above them stay at the default `order: 0`. `ReorderControls` in each header calls `moveSection` from `useUiPrefs`.
+- **Advanced options** live as a collapsible expander (`.advancedInline`) inside the `.inputSection` card, below the format dropdowns — not a standalone section. Toggle state is local (`advancedOpen`).
+- **Dashboard section order:** the three rearrangeable blocks (downloading / completed / subscriptions) are reordered purely by CSS flex `order` — each gets `style={{ order: sectionOrder.indexOf(id) + 1 }}`; fixed items above them (input card, stats meter) stay at the default `order: 0`. `ReorderControls` in each header calls `moveSection` from `useUiPrefs`.
 
 ## Animated Backgrounds (`frontend/src/theme/`)
 
