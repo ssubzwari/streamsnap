@@ -121,7 +121,7 @@ yt-dlp  (YoutubeDL class, not subprocess)
 3. Bootstraps new DBs (version 0, run all migrations) vs existing pre-versioning DBs (version 1, already migrated)
 4. Runs any pending `_migrate_vN` functions in order, writing the version after each one
 
-**To add a migration:** write `async def _migrate_vN(conn)`, append to `_MIGRATIONS`, bump `SCHEMA_VERSION`. The loop handles the rest. (Current: v4 — v3 added `downloads.queue_position`, v4 added `notification_channels.events_json`.)
+**To add a migration:** write `async def _migrate_vN(conn)`, append to `_MIGRATIONS`, bump `SCHEMA_VERSION`. The loop handles the rest. (Current: v5 — v3 added `downloads.queue_position`, v4 added `notification_channels.events_json`, v5 backfills `downloads.vcodec='none'` for already-on-disk audio rows.)
 
 The current schema version is exposed at `GET /api/settings/db/schema-version` and displayed in Settings → Advanced → Database.
 

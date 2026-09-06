@@ -16,10 +16,29 @@ from app.models import Download, SeenVideo, Subscription
 from app.schemas import DownloadCreateRequest, DownloadInfo, MetadataResolveRequest, PlaylistEntry
 from app.services.download_manager import download_manager
 from app.services.notifications import create_notification
-from app.utils import category_subdir, find_existing_file, safe_folder_name
+from app.utils import (
+    AUDIO_EXTS,
+    category_subdir,
+    find_existing_file,
+    is_audio_only_format,
+    is_audio_path,
+    safe_folder_name,
+)
 from app.ws import emit_download_added, emit_download_completed, emit_download_updated
 
 router = APIRouter(prefix="/api/downloads", tags=["downloads"])
+
+
+def _codecs_for_existing(path: str | None, format_spec: str | None) -> dict:
+    """Codec / ext fields for a row we short-circuit to 'completed' because the
+    file is already on disk — we never run yt-dlp, so infer 'Audio' vs 'Video'
+    from the file extension (falling back to the requested format)."""
+    if not path:
+        return {}
+    ext = pathlib.Path(path).suffix.lstrip(".").lower() or None
+    if is_audio_path(path) or (ext is None and is_audio_only_format(format_spec)):
+        return {"ext": ext, "vcodec": "none"}
+    return {"ext": ext}
 
 
 @router.post("", response_model=DownloadInfo, status_code=201)
@@ -87,6 +106,7 @@ async def create_download(
         category=category,
         subcategory=subcategory,
         tag=tag,
+        **_codecs_for_existing(existing_path, format_spec),
     )
     session.add(download)
     await session.commit()
@@ -320,6 +340,7 @@ async def download_playlist(
             category=category,
             subcategory=subcategory,
             tag=tag,
+            **_codecs_for_existing(existing_path, format_spec),
         )
         session.add(dl)
         await session.flush()
@@ -665,8 +686,15 @@ def _stream_media_type(download: Download, filepath: str) -> str:
     import os
 
     guessed, _ = mimetypes.guess_type(filepath)
-    if download.vcodec == "none":
-        ext = os.path.splitext(filepath)[1].lower()
+    ext = os.path.splitext(filepath)[1].lower()
+    is_audio = (
+        download.vcodec == "none"
+        # Rows skipped as "already on disk" (or from an older build) can have
+        # no codec recorded — trust the extension / requested format instead.
+        or (not download.vcodec and ext in AUDIO_EXTS)
+        or (not download.vcodec and is_audio_only_format(download.format_spec))
+    )
+    if is_audio:
         return (
             _AUDIO_MIME_BY_EXT.get(ext)
             or (guessed if guessed and guessed.startswith("audio/") else None)

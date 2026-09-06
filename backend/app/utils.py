@@ -48,6 +48,34 @@ MEDIA_EXTS: tuple[str, ...] = (
     ".m4a", ".mp3", ".opus", ".flac", ".wav", ".aac", ".ogg",
 )
 
+# Containers that only ever hold audio. Used to label a download "Audio" when
+# we never ran it through yt-dlp (already-on-disk short-circuit) or when the
+# progress hook's info_dict came back without codec info.
+AUDIO_EXTS: frozenset[str] = frozenset({
+    ".m4a", ".m4b", ".mp3", ".opus", ".ogg", ".oga", ".aac",
+    ".flac", ".wav", ".weba", ".mka",
+})
+
+
+def is_audio_path(path: str | None) -> bool:
+    """True when *path* points at an audio-only container."""
+    return bool(path) and os.path.splitext(path)[1].lower() in AUDIO_EXTS
+
+
+def is_audio_only_format(format_spec: str | None) -> bool:
+    """Best-effort: does this yt-dlp format string ask for audio only?
+
+    Catches the app's audio presets (``bestaudio[ext=m4a]/bestaudio/best``,
+    ``bestaudio/best``) without misfiring on the video specs, which always
+    name ``bestvideo`` / carry a ``+`` merge.
+    """
+    if not format_spec:
+        return False
+    fs = format_spec.lower().replace(" ", "")
+    if "bestvideo" in fs or "+" in fs:
+        return False
+    return "bestaudio" in fs or fs in ("ba", "ba/best", "worstaudio")
+
 _NORMALIZE_RE = re.compile(r"[^a-z0-9]+")
 _FCODE_RE = re.compile(r"\.f\d+$")
 

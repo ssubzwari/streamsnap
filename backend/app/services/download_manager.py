@@ -525,6 +525,19 @@ class DownloadManager:
                 # already have them — preserves frontend-provided values
                 # (e.g. one-off download where the user resolved metadata up
                 # front) over the post-merge yt-dlp values.
+                existing = await self._get_download(did)
+                # yt-dlp's info_dict occasionally comes back without vcodec for
+                # audio-only downloads (format fallback, some extractors). Fall
+                # back to the file extension / requested format so the row is
+                # still labelled "Audio" and /stream serves an audio player.
+                from app.utils import is_audio_only_format, is_audio_path
+                vcodec = msg.get("vcodec")
+                if not vcodec and (
+                    is_audio_path(msg.get("output_path"))
+                    or is_audio_path(existing.output_path if existing else None)
+                    or is_audio_only_format(existing.format_spec if existing else None)
+                ):
+                    vcodec = "none"
                 fin_kwargs: dict = {
                     "status": "completed",
                     "percent": 100.0,
@@ -532,10 +545,9 @@ class DownloadManager:
                     "ext": msg.get("ext"),
                     "height": msg.get("height"),
                     "filesize": msg.get("filesize"),
-                    "vcodec": msg.get("vcodec"),
+                    "vcodec": vcodec,
                     "acodec": msg.get("acodec"),
                 }
-                existing = await self._get_download(did)
                 if existing is not None:
                     if not existing.thumbnail and msg.get("thumbnail"):
                         fin_kwargs["thumbnail"] = msg["thumbnail"]
@@ -559,7 +571,11 @@ class DownloadManager:
                 new_path = msg.get("output_path")
                 existing = await self._get_download(did)
                 if new_path and existing is not None and existing.output_path != new_path:
-                    await self._update_db(did, output_path=new_path)
+                    from app.utils import is_audio_path
+                    fix: dict = {"output_path": new_path}
+                    if existing.vcodec != "none" and is_audio_path(new_path):
+                        fix["vcodec"] = "none"
+                    await self._update_db(did, **fix)
                     download = await self._get_download(did)
                     if download:
                         from app.schemas import DownloadInfo

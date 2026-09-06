@@ -11,7 +11,7 @@ _SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 # Bump this constant whenever a new _migrate_vN function is added.
 # Format: integer, monotonically increasing.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class Base(DeclarativeBase):
@@ -130,13 +130,37 @@ async def _migrate_v4(conn: AsyncConnection) -> None:
         )
 
 
+async def _migrate_v5(conn: AsyncConnection) -> None:
+    """Backfill downloads.vcodec = 'none' for completed audio-only files that
+    were recorded without codec info (skipped as already-on-disk, or from a
+    build before audio detection), so the Type column and inline player treat
+    them as audio."""
+    from sqlalchemy import text
+
+    audio_exts = (
+        ".m4a", ".m4b", ".mp3", ".opus", ".ogg", ".oga",
+        ".aac", ".flac", ".wav", ".weba", ".mka",
+    )
+    likes = " OR ".join(
+        f"LOWER(output_path) LIKE '%{ext}'" for ext in audio_exts
+    )
+    await conn.execute(
+        text(
+            "UPDATE downloads SET vcodec = 'none' "
+            "WHERE (vcodec IS NULL OR vcodec = '') "
+            f"AND output_path IS NOT NULL AND ({likes})"
+        )
+    )
+
+
 # Registry — index N-1 contains the function that migrates to version N.
-# To add version 5: write _migrate_v5, append it here, set SCHEMA_VERSION = 5.
+# To add version 6: write _migrate_v6, append it here, set SCHEMA_VERSION = 6.
 _MIGRATIONS = [
     _migrate_v1,   # index 0 → reaches version 1
     _migrate_v2,   # index 1 → reaches version 2
     _migrate_v3,   # index 2 → reaches version 3
     _migrate_v4,   # index 3 → reaches version 4
+    _migrate_v5,   # index 4 → reaches version 5
 ]
 
 

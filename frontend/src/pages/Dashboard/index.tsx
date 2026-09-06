@@ -336,6 +336,27 @@ function qualityLabel(d: DownloadInfo): string {
   return "\u2014";
 }
 
+const AUDIO_EXTS = new Set([
+  "m4a", "m4b", "mp3", "opus", "ogg", "oga", "aac", "flac", "wav", "weba", "mka",
+]);
+
+/** "Audio" vs "Video" for the Type column. Prefer yt-dlp's codec, but fall
+ *  back to the file extension / requested format so rows that were skipped
+ *  (file already on disk) or came back without codec info still label right. */
+function isAudioDownload(d: DownloadInfo): boolean {
+  if (d.vcodec === "none") return true;
+  if (d.vcodec) return false;
+  const ext = (d.ext || d.output_path?.split(".").pop() || "").toLowerCase();
+  if (ext && AUDIO_EXTS.has(ext)) return true;
+  const fs = (d.format_spec || "").toLowerCase().replace(/\s/g, "");
+  if (fs && !fs.includes("bestvideo") && !fs.includes("+") && fs.includes("bestaudio")) return true;
+  return false;
+}
+
+function mediaTypeLabel(d: DownloadInfo): string {
+  return isAudioDownload(d) ? "Audio" : "Video";
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface DashboardProps {
@@ -1632,7 +1653,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                       </div>
                     </td>
                     <td className={styles.metaCell} data-label="Type">
-                      {d.vcodec === "none" ? "Audio" : "Video"}
+                      {mediaTypeLabel(d)}
                     </td>
                     <td className={`${styles.metaCell} ${styles.qualityCell}`} data-label="Quality" title={qualityLabel(d)}>{qualityLabel(d)}</td>
                     <td className={styles.metaCell} data-label="Speed">{d.speed ?? "\u2014"}</td>
@@ -1855,7 +1876,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                     </div>
                                   </div>
                                 </td>
-                                <td className={styles.metaCell} data-label="Type">{d.vcodec === "none" ? "Audio" : "Video"}</td>
+                                <td className={styles.metaCell} data-label="Type">{mediaTypeLabel(d)}</td>
                                 <td className={styles.metaCell} data-label="File size">{formatBytes(d.filesize)}</td>
                                 <td className={styles.metaCell} data-label="Downloaded">{formatDate(d.updated_at)}</td>
                                 <td>
@@ -1990,7 +2011,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                   </div>
                                 </div>
                               </td>
-                              <td className={styles.metaCell}>{d.vcodec === "none" ? "Audio" : "Video"}</td>
+                              <td className={styles.metaCell}>{mediaTypeLabel(d)}</td>
                               <td className={styles.metaCell}>{formatBytes(d.filesize)}</td>
                               <td className={styles.metaCell}>{formatDate(d.updated_at)}</td>
                               <td>
