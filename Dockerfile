@@ -8,7 +8,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ── Stage 2: Production image ─────────────────────────────────────────────────
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Install ffmpeg (required for 1080p+ merging)
 RUN apt-get update \
