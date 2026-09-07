@@ -231,82 +231,12 @@ yt-dlp  (YoutubeDL class; progress via progress_hooks)
 
 ---
 
-## REST API Reference
+## API Reference
 
-### Metadata
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/api/metadata/resolve` | Resolve a URL -> title, thumbnail, duration, formats |
+The full REST endpoint list lives in
+**[docs/DEEP_DIVE.md → Appendix: REST API Reference](docs/DEEP_DIVE.md#appendix-rest-api-reference)**.
 
-### Downloads
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/api/downloads` | Create a download |
-| `GET` | `/api/downloads` | List all downloads |
-| `GET` | `/api/downloads/status` | Queue status summary |
-| `GET` | `/api/downloads/grouped` | Completed downloads grouped by subscription |
-| `GET` | `/api/downloads/export` | Export the queue as a URL list |
-| `POST` | `/api/downloads/pad-episodes` | Zero-pad episode numbers of files already on disk |
-| `POST` | `/api/downloads/playlist/preview` | Start async playlist expansion -> `202` + job id |
-| `GET` | `/api/downloads/playlist/preview/{job_id}` | Poll expansion job |
-| `POST` | `/api/downloads/playlist` | Enqueue a reviewed playlist |
-| `POST` | `/api/downloads/queue/reorder` | Rewrite queue positions (`{ordered_ids}`) |
-| `POST` | `/api/downloads/pause-all` | Pause / resume the whole queue |
-| `POST` | `/api/downloads/resume-incomplete` | Re-queue downloads left mid-flight |
-| `GET` | `/api/downloads/{id}` | Get one download |
-| `POST` | `/api/downloads/{id}/retry` | Retry in place (keeps format + folder) |
-| `DELETE` | `/api/downloads/{id}` | Delete (cascades) |
-| `GET` | `/api/downloads/{id}/file` | Download the finished file to the browser |
-| `GET` | `/api/downloads/{id}/stream` | Inline stream with HTTP Range |
-| `GET` | `/api/downloads/{id}/open` | Reveal in the host's file manager (`501` if headless) |
-
-### Subscriptions
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/api/subscriptions` | Create (with `download_existing`, `download_video_ids`) |
-| `GET` | `/api/subscriptions` | List |
-| `GET` | `/api/subscriptions/{id}` | Get one |
-| `PATCH` | `/api/subscriptions/{id}` | Update interval / format / template / active / notify |
-| `DELETE` | `/api/subscriptions/{id}` | Delete (cascades to seen-videos + downloads) |
-| `POST` | `/api/subscriptions/{id}/check` | Force an immediate poll (`202`) |
-| `POST` | `/api/subscriptions/{id}/artwork` | (Re)generate `poster.jpg` + `background.jpg` (`202`) |
-
-### Notifications
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/api/notifications` | List notifications |
-| `PATCH` | `/api/notifications/{id}/read` | Mark one read |
-| `POST` | `/api/notifications/read-all` | Mark all read |
-| `GET` | `/api/notifications/channels` | List channels |
-| `POST` | `/api/notifications/channels` | Create a channel |
-| `PATCH` | `/api/notifications/channels/{id}` | Update a channel |
-| `DELETE` | `/api/notifications/channels/{id}` | Delete a channel |
-| `POST` | `/api/notifications/channels/test` | Test an **unsaved** config |
-| `POST` | `/api/notifications/channels/{id}/test` | Test a **saved** channel |
-| `POST` | `/api/notifications/summary` | Send a summary digest now |
-
-### Settings
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/api/settings` | Read all settings |
-| `PUT` | `/api/settings` | Write settings (whitelisted keys only) |
-| `GET` | `/api/settings/ytdlp-version` | Installed yt-dlp version |
-| `POST` | `/api/settings/update-ytdlp` | Upgrade yt-dlp in the isolated dir |
-| `GET` | `/api/settings/db/schema-version` | Current / target schema version |
-| `GET` | `/api/settings/db/backups` | List backups |
-| `POST` | `/api/settings/db/backup` | Create a hot backup |
-| `POST` | `/api/settings/db/restore` | Restore a server-side backup |
-| `GET` | `/api/settings/db/backups/{name}/download` | Download a backup file |
-| `POST` | `/api/settings/db/backups/upload` | Upload a `.db` file |
-| `DELETE` | `/api/settings/db/backups/{name}` | Delete a backup |
-| `POST` | `/api/settings/db/initialize` | Wipe user data, keep channels + settings |
-
-### Health
-`GET /health` -> `{"status": "ok"}`
-
----
-
-## WebSocket Events (server -> client)
+### WebSocket Events (server -> client)
 
 | Event | Trigger |
 |---|---|
