@@ -14,6 +14,60 @@ playlists with automatic polling, and watch real-time download progress in the b
 
 ---
 
+## Screenshots
+
+> The data shown is synthetic (placeholder titles, thumbnails and URLs) for demo purposes.
+
+![StreamSnap dashboard — live queue, throughput graph and format picker](docs/images/dashboard-dark.png)
+
+<details>
+<summary><b>More — dashboard, subscriptions, light theme, mobile</b></summary>
+
+### Dashboard
+
+The whole page, top to bottom — URL bar, format picker, activity meter, queue,
+completed downloads and subscriptions:
+
+![Full dashboard](docs/images/dashboard-full.png)
+
+Advanced options — output template, yt-dlp option presets, cookies upload and
+bulk URL import/export:
+
+![Advanced options](docs/images/advanced-options.png)
+
+Completed downloads collapse into per-subscription groups, plus an "Other" group
+for manual downloads:
+
+![Completed downloads grouped by source](docs/images/completed-grouped.png)
+
+### Subscriptions
+
+Channel / playlist subscriptions with per-row status, mute, artwork rebuild and
+"check now":
+
+![Subscriptions table](docs/images/subscriptions.png)
+
+### Light theme
+
+![Dashboard, light theme](docs/images/dashboard-light.png)
+
+![Completed downloads, light theme](docs/images/completed-light.png)
+
+### Phone layout
+
+Below 640px the tables reflow into stacked cards; the active download keeps its
+full card while queued rows shrink to a single line.
+
+<p>
+  <img src="docs/images/mobile-top.png" width="30%" alt="Mobile — top of dashboard">
+  <img src="docs/images/mobile-queue.png" width="30%" alt="Mobile — download queue cards">
+  <img src="docs/images/mobile-completed.png" width="30%" alt="Mobile — completed downloads">
+</p>
+
+</details>
+
+---
+
 ## Features
 
 ### Downloads
