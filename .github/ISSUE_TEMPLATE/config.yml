@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & help
+    url: https://github.com/ssubzwari/streamsnap/discussions/categories/q-a
+    about: Setup help, "is this possible", and yt-dlp format questions — ask in Discussions.
+  - name: Welcome / how to report
+    url: https://github.com/ssubzwari/streamsnap/issues/22
+    about: What to include in a bug report, and the project's security model.

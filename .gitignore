@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# SQLite databases (local state — DB is re-created from models on first run)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.err
+
+# Downloads — user's video files, never committed
+downloads/
+downloads/**
+!downloads/.gitkeep
+
+# Environment / secrets (SMTP creds, API tokens, etc.)
+.env
+.env.*
+!.env.example
+
+# DB backups + credential material — a backup file is a full credential dump
+backups/
+db-backups/
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+service-account*.json
+*.tfstate
+*.tfstate.*
+
+# Claude Code local settings + machine-specific launch config
+.claude/settings.local.json
+.claude/launch.json
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Misc
+*.url

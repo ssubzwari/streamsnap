@@ -1,0 +1,1709 @@
+/* ── Layout shell ──────────────────────────────────────────────────────────── */
+
+.app {
+  flex: 1 0 auto;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
+.header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 var(--space-5);
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  font-size: var(--text-base);
+  font-weight: var(--weight-bold);
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.brandAccent {
+  color: var(--color-accent);
+  margin-left: 2px;
+}
+
+.headerStats {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
+.settingsBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.settingsBtn:hover {
+  color: var(--color-text);
+  background: var(--color-surface-hi);
+}
+
+.statBadge {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: var(--color-surface-hi);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-2);
+}
+
+.statSpeed {
+  font-size: var(--text-xs);
+  color: var(--color-success);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Main content ───────────────────────────────────────────────────────────── */
+
+.main {
+  flex: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ── URL input section ──────────────────────────────────────────────────────── */
+
+.inputSection {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-shadow: var(--shadow-card), var(--edge-hi);
+}
+
+.inputRow {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.subscribeOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.subscribeOptions label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+  user-select: none;
+}
+
+.submitError {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-error);
+}
+
+.urlInput {
+  flex: 1;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.urlInput::placeholder {
+  color: var(--color-text-muted);
+}
+
+.urlInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.downloadBtn {
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.downloadBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.downloadBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.subscribeBtn {
+  background: var(--color-success);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.subscribeBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.subscribeBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Status toast (Copy URL feedback, etc.) ─────────────────────────────────── */
+
+.statusToast {
+  position: fixed;
+  bottom: var(--space-5);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-surface-hi);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow-pop);
+  z-index: 100;
+  animation: toastIn var(--dur-base) var(--ease-out);
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ── Format dropdowns row ───────────────────────────────────────────────────── */
+
+.formatRow {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.dropdownLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dropdown {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.dropdown:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+/* ── Quick-tag buttons ──────────────────────────────────────────────────────── */
+
+.quickTagRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.quickTagLabel {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.quickTagButtons {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.quickTagBtn {
+  background: var(--color-surface-hi);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  padding: 4px var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.quickTagBtn:hover {
+  background: var(--color-surface);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.quickTagBtnActive {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.errorMsg {
+  font-size: var(--text-sm);
+  color: var(--color-error);
+  padding: var(--space-2) var(--space-3);
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+/* ── Advanced options — collapsible, tucked into the input bar ──────────────── */
+
+/* Sits as the last child of .inputSection; the negative inline margin lets the
+   divider run edge-to-edge of the input card. */
+.advancedInline {
+  margin: var(--space-1) calc(-1 * var(--space-4)) 0;
+  padding: var(--space-3) var(--space-4) 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.advancedToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.advancedToggle:hover {
+  color: var(--color-text);
+}
+
+.advancedToggleIcon {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  width: 12px;
+  text-align: center;
+}
+
+.advancedPanel {
+  padding: var(--space-3) 0 var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.advancedGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.advancedGroupTitle {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.advancedRow {
+  display: flex;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.advancedLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.advancedLabelFull {
+  flex: 1;
+  min-width: 280px;
+}
+
+.advancedInput {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  width: 180px;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.advancedInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.advancedSelect {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+}
+
+.advancedCheckbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.advancedCheckbox input[type="checkbox"] {
+  accent-color: var(--color-accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* ── Tools section ──────────────────────────────────────────────────────────── */
+
+.toolsCol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.toolsSubTitle {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.bulkActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.toolBtn {
+  background: var(--color-surface-hi);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.toolBtn:hover {
+  background: var(--color-border);
+  border-color: var(--color-text-muted);
+}
+
+.importBox {
+  margin-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.importTextarea {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-sans);
+  resize: vertical;
+  width: 100%;
+  max-width: 600px;
+}
+
+.importTextarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.importActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.importBtn {
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.cancelBtn {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+/* ── Table sections ─────────────────────────────────────────────────────────── */
+
+.tableSection {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-card), var(--edge-hi);
+}
+
+/* The tables use `table-layout: fixed` (see .table) with a <colgroup>, so
+   columns hold their assigned widths and long cell text ellipsizes instead
+   of widening the table. This wrapper is just a safety net — it should never
+   actually need to scroll. */
+.tableScroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-hi);
+}
+
+.sectionTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  margin: 0;
+}
+
+/* Wraps the chevron + title + count so the whole left side of the section
+   header is one big click target. */
+.sectionToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text);
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.sectionToggle .sectionTitle {
+  flex-shrink: 0;
+}
+
+.sectionToggle:hover {
+  color: var(--color-accent);
+}
+
+.sectionToggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Wrapper for the collapsible body of a section. Currently transparent —
+   exists so the parent <section> can still own its border/radius while we
+   show/hide all the inner content together. */
+.sectionBody {
+  display: contents;
+}
+
+.sectionCount {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* At-a-glance breakdown next to the section title — most useful when the
+   section is collapsed. */
+.sectionSummary {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.sectionActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+  align-items: center;
+}
+
+/* ── Section reorder (move up / down) ──────────────────────────────────────── */
+
+.reorder {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.reorderBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.reorderBtn:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-text-muted);
+  background: var(--color-surface-hi);
+}
+
+.reorderBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.reorderBtnDown svg {
+  transform: rotate(180deg);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  table-layout: fixed;
+}
+
+/* Fixed layout means an over-long value (a raw format_spec, a long URL)
+   would spill its cell — clip it and let the inner element ellipsize. */
+.table td {
+  overflow: hidden;
+}
+
+.table thead tr {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table th {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover td {
+  background: color-mix(in srgb, var(--color-surface-hi) 60%, transparent);
+}
+
+.videoTitle {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  display: block;
+}
+
+.progressTrack {
+  height: 3px;
+  background: var(--color-surface-hi);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 2px;
+  transition: width var(--dur-fast) var(--ease-out);
+}
+
+.percentLabel {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.metaCell {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quality column can hold long raw format specs like
+   "bestvideo*[ext=webm]+bestaudio/..." — cap + ellipsis keeps the table
+   from ballooning past the viewport. Hover for the full value. */
+.qualityCell {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Clickable filename — becomes the primary "play" affordance for
+   completed downloads. Matches .videoTitle styling but adds hover
+   affordance. */
+.videoTitleLink {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  display: block;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.videoTitleLink:hover,
+.videoTitleLink:focus-visible {
+  color: var(--color-accent);
+  outline: none;
+}
+
+.urlTruncate {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.rowFailed td {
+  background: color-mix(in srgb, var(--color-error) 5%, transparent);
+}
+
+.errorInline {
+  font-size: var(--text-xs);
+  color: var(--color-error);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────── */
+
+.ghostBtn {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.ghostBtn:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-text-muted);
+}
+
+.ghostBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.accentBtn {
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.accentBtn:hover {
+  opacity: 0.88;
+}
+
+.iconBtn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  padding: var(--space-1);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+  line-height: 1;
+  /* Prevent the action-row flex container from shrinking icons when the
+     parent table column gets squeezed by table-layout: auto. Without this
+     the SVGs collapse to ~12px wide in narrow viewports. */
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconBtn svg {
+  flex-shrink: 0;
+}
+
+.iconBtn:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-hi);
+}
+
+.iconBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rowActions {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+/* Up/down queue-order controls, shown on queued rows only. */
+.queueMove {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.queueNudge {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.queueTopBtn,
+.queueMoveBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.queueMoveBtn {
+  height: 13px;
+}
+
+.queueTopBtn {
+  align-self: stretch;
+}
+
+.queueTopBtn svg,
+.queueMoveBtn svg {
+  width: 11px;
+  height: 11px;
+}
+
+.queueTopBtn:hover:not(:disabled),
+.queueMoveBtn:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-text-muted);
+  background: var(--color-surface-hi);
+}
+
+.queueTopBtn:disabled,
+.queueMoveBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.queueMoveBtnDown svg {
+  transform: rotate(180deg);
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-surface-hi);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  padding: 3px var(--space-2);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.actionBtn:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-border);
+  border-color: var(--color-text-muted);
+}
+
+.actionBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.actionBtnDanger {
+  composes: actionBtn;
+}
+
+.actionBtnDanger:hover:not(:disabled) {
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
+}
+
+/* Icon-only button variants */
+.iconBtnDanger:hover:not(:disabled) {
+  color: var(--color-error) !important;
+  background: color-mix(in srgb, var(--color-error) 10%, transparent) !important;
+}
+
+/* ── Thumbnails ──────────────────────────────────────────────────────────────── */
+
+.videoCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.videoCellText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.thumb {
+  width: 48px;
+  height: 27px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--color-surface-hi);
+}
+
+.subThumb {
+  width: 36px;
+  height: 27px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-hi);
+  border-radius: 4px;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+.subThumb svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Status toggles ──────────────────────────────────────────────────────────── */
+
+.statusActive {
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success) 40%, transparent);
+  color: var(--color-success);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.statusActive:hover {
+  opacity: 0.75;
+}
+
+.statusInactive {
+  background: color-mix(in srgb, var(--color-text-muted) 10%, transparent);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.statusInactive:hover {
+  opacity: 0.75;
+}
+
+/* ── Add subscription form ───────────────────────────────────────────────────── */
+
+.addSubForm {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.addSubRow {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ── Completed toolbar ───────────────────────────────────────────────────────── */
+
+.completedToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+
+.sortBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  font-family: var(--font-sans);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.sortBtn:hover {
+  background: var(--color-surface-hi);
+}
+
+.sortIcon {
+  font-size: var(--text-xs);
+}
+
+.toolbarDivider {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border);
+  margin: 0 var(--space-1);
+}
+
+.downloadSelectedBar {
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.downloadSelectedBar:hover {
+  background: var(--color-surface-hi);
+}
+
+/* ── Grouped downloads (by subscription) ────────────────────────────────────────── */
+
+.completedGroupsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.downloadGroup {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.downloadGroup:last-child {
+  border-bottom: none;
+}
+
+.groupHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-hi);
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.groupHeader:hover {
+  background: color-mix(in srgb, var(--color-surface-hi) 80%, var(--color-accent) 20%);
+}
+
+.groupTitle {
+  flex: 1;
+  font-weight: var(--weight-semibold);
+}
+
+.groupCount {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-2);
+  font-weight: var(--weight-semibold);
+}
+
+/* ── Checkbox ────────────────────────────────────────────────────────────────── */
+
+.checkbox {
+  accent-color: var(--color-accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  margin: 0;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────────── */
+
+.empty {
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  padding: var(--space-6) 0;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-7) var(--space-4);
+}
+
+.emptyIcon {
+  width: 40px;
+  height: 40px;
+  color: var(--color-border);
+  stroke-width: 1.5;
+}
+
+.emptyTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.emptyHint {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin: 0;
+  opacity: 0.7;
+  text-align: center;
+  max-width: 300px;
+}
+
+/* ── Responsive breakpoints ──────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .inputRow {
+    flex-wrap: wrap;
+  }
+
+  .urlInput {
+    min-width: 0;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .inputRow .downloadBtn,
+  .inputRow .subscribeBtn {
+    flex: 1 1 auto;
+  }
+
+  .formatRow {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .formatRow .dropdownLabel {
+    flex: 1 1 40%;
+  }
+
+  .formatRow .dropdown {
+    width: 100%;
+  }
+
+  .main {
+    padding: var(--space-4);
+  }
+}
+
+/* ── Phone layout ─────────────────────────────────────────────────────────────
+   The data tables carry too many columns to fit a phone. Below this width they
+   reflow into stacked cards: the header row is hidden and each <td> that opts in
+   (via `data-label`) prints its label inline. Cells without a label (checkbox,
+   video/title block, action buttons) render as plain full-width blocks. */
+@media (max-width: 640px) {
+  .header {
+    padding: 0 var(--space-3);
+  }
+
+  .main {
+    padding: var(--space-3);
+    gap: var(--space-4);
+  }
+
+  .advancedPanel {
+    gap: var(--space-3);
+  }
+
+  .advancedRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .advancedInput,
+  .advancedSelect {
+    width: 100%;
+  }
+
+  .completedToolbar {
+    gap: var(--space-1);
+  }
+
+  .pausedBanner {
+    flex-wrap: wrap;
+  }
+
+  .pausedBannerBtn {
+    width: 100%;
+  }
+
+  /* Section header: the collapse toggle becomes a full-width tap target so it
+     can never be squeezed to nothing by the action buttons beside it. */
+  .sectionHeader {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .sectionToggle {
+    flex: 1 1 100%;
+    width: 100%;
+    padding: var(--space-1) 0;
+  }
+
+  .sectionSummary {
+    display: none;
+  }
+
+  .sectionActions {
+    width: 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  .sectionActions button {
+    flex: 1 1 auto;
+  }
+
+  /* Tables → cards */
+  .tableScroll {
+    overflow-x: visible;
+  }
+
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table thead,
+  .table colgroup {
+    display: none;
+  }
+
+  .table tr {
+    position: relative;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg);
+    padding: var(--space-3);
+    margin: var(--space-3) 0 0;
+  }
+
+  .table tbody tr:hover td {
+    background: transparent;
+  }
+
+  .table td {
+    border: none !important;
+    padding: var(--space-1) 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* First cell of every row is the select checkbox — pin it to the card's
+     top-right corner so the title leads the card. */
+  .table td:first-child {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    padding: 0;
+    width: auto;
+  }
+
+  /* Leave room for the pinned checkbox on the first labelled/title row. */
+  .table td:nth-child(2) {
+    padding-right: var(--space-5);
+  }
+
+  /* Labelled cells: "LABEL ............ value", value wraps under on overflow */
+  .table td[data-label] {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    flex-wrap: wrap;
+    text-align: right;
+    padding: var(--space-1) 0;
+    min-width: 0;
+  }
+
+  .table td[data-label] + td[data-label] {
+    border-top: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent) !important;
+  }
+
+  .table td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+  }
+
+  .qualityCell {
+    max-width: none;
+    overflow: visible;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .videoCell {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .videoTitle,
+  .videoTitleLink {
+    white-space: normal;
+  }
+
+  .progressTrack {
+    width: 100%;
+  }
+
+  .rowActions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  /* Give action buttons a real touch target on phones */
+  .iconBtn {
+    padding: var(--space-2);
+  }
+
+  /* Queued rows have no progress to show — collapse them to a single
+     compact line (thumb · title · remove) instead of a full card. The
+     actively-downloading row keeps the detailed card. */
+  /* `.table tr` sets display:block above — need the extra specificity here. */
+  .table tr.rowQueued {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .rowQueued td {
+    padding: 0;
+  }
+
+  .rowQueued td:first-child {
+    position: static;
+    order: -1;
+    flex-shrink: 0;
+  }
+
+  .rowQueued td:nth-child(2) {
+    flex: 1;
+    min-width: 0;
+    padding-right: 0;
+  }
+
+  .rowQueued td:last-child {
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  .rowQueued td[data-label],
+  .rowQueued .progressTrack,
+  .rowQueued .percentLabel {
+    display: none;
+  }
+
+  .rowQueued .videoCell {
+    align-items: center;
+  }
+
+  .rowQueued .thumb {
+    width: 40px;
+    height: 23px;
+  }
+
+  .rowQueued .videoTitle {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .rowQueued .rowActions {
+    flex-wrap: nowrap;
+  }
+}
+
+/* ── Playlist review modal ───────────────────────────────────────────────── */
+
+.plOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-4);
+}
+
+.plModal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-pop);
+}
+
+.plHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.plHeaderText {
+  min-width: 0;
+}
+
+.plTitle {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plSubtitle {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.plClose {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 var(--space-1);
+  flex-shrink: 0;
+}
+
+.plClose:hover {
+  color: var(--color-text);
+}
+
+.plList {
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  flex: 1;
+}
+
+.plEmpty {
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.plRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.plRow:hover {
+  background: var(--color-surface-hi);
+}
+
+.plIndex {
+  width: 1.75rem;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.plName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plDate {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.plRemove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.plRemove:hover:not(:disabled) {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+.plRemove:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.plFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.plErrorMsg {
+  margin: 0;
+  padding: var(--space-2) var(--space-5);
+  color: var(--color-error);
+  font-size: var(--text-sm);
+  border-top: 1px solid var(--color-border);
+}
+
+.loadingMsg {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* ── Paused banner ───────────────────────────────────────────────────────── */
+
+.pausedBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-warn) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-warn) 12%, transparent);
+}
+
+.pausedBannerText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.pausedBannerBtn {
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-warn);
+  color: #1a1a1a;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.pausedBannerBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
