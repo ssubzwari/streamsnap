@@ -12,6 +12,10 @@ A full endpoint list is in the [REST API Reference](#appendix-rest-api-reference
 
 ## 1. Subscriptions
 
+![Subscriptions table — status, mute, artwork rebuild, check-now](images/subscriptions.png)
+
+*(Screenshots use synthetic demo data.)*
+
 ### What it does
 
 A subscription is a saved channel or playlist URL that StreamSnap re-checks on a fixed
@@ -257,6 +261,8 @@ Response is a **redacted, step-by-step transcript** — never raises:
 
 ## 3. Queue / concurrency model
 
+![Live queue — active downloads with progress, speed and ETA; queued rows below](images/dashboard-dark.png)
+
 ### What it does
 
 Turns an unbounded list of `queued` download rows into a controlled number of concurrent
@@ -491,6 +497,8 @@ and `settings` — so you don't re-enter your SMTP password and yt-dlp defaults.
 ---
 
 ## 5. Download activity meter (StatsMeter)
+
+![Download activity meter — throughput sparkline and stat legend](images/dashboard-dark.png)
 
 ### What it does
 
