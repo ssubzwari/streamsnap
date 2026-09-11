@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+      # Feature branch — pushes here publish a `tmdb`-tagged image so the
+      # branch can be pulled and run before it merges. `latest` / `alpha`
+      # stay pinned to main (see the metadata step below).
+      - tmdb
     paths:
       - "backend/**"
       - "frontend/**"
