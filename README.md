@@ -94,8 +94,10 @@ full card while queued rows shrink to a single line.
 ### Organisation (Plex / Jellyfin friendly)
 - **Episode-number padding** — `E1` → `E01` on download so episodes sort correctly in
   Plex/Jellyfin; a Settings action re-pads files already on disk
-- **Per-show artwork** — optionally fetch `poster.jpg` + `background.jpg` for each show
-  folder from the first video's thumbnail
+- **Per-show artwork** — fetch `poster.jpg`, `background.jpg`, `logo.png`, `banner.jpg`,
+  `square.jpg`, and seasonal posters from **TMDB** (The Movie Database) when an API key is
+  configured; falls back to the first video's thumbnail. Manually override TMDB matches
+  per subscription when auto-matching guesses wrong
 
 ### Subscriptions
 - **Channel / playlist subscriptions** — new videos download automatically on a configurable
@@ -109,8 +111,9 @@ full card while queued rows shrink to a single line.
 - **Deduplication** — `UNIQUE(subscription_id, video_id)` plus yt-dlp's `--download-archive`
   as a secondary guard
 - Each subscription downloads into its own named subfolder
-- **Plex / Jellyfin artwork** — the 🖼 button on a subscription (re)builds `poster.jpg` +
-  `background.jpg` for its folder; enable it by default in Settings → Metadata & Thumbnails
+- **Plex / Jellyfin artwork** — the 🖼 button on a subscription (re)builds artwork (poster,
+  background, logo, square, banner, season posters) from TMDB or yt-dlp thumbnail; enable it
+  by default in Settings → Metadata & Thumbnails → Subscription Artwork
 
 ### Notifications
 - **In-app toasts** and **native browser notifications**
@@ -161,7 +164,9 @@ Download · Output · Auth · Advanced · Notifications**
   audio codec (opus/aac/m4a), merge container (mp4/mkv/webm), `--prefer-free-formats`, `--format-sort`
 - **Subtitles** — write subs, languages, auto-subs, embed, convert format
 - **Metadata & Thumbnails** — embed/write thumbnail, write info JSON, write description,
-  embed metadata, embed chapters, per-show Plex/Jellyfin artwork (`poster.jpg` + `background.jpg`)
+  embed metadata, embed chapters; per-show artwork toggle + TMDB API key & language settings
+  (TMDB provides `poster.jpg`, `background.jpg`, `logo.png`, `banner.jpg`, `square.jpg`,
+  seasonal posters; falls back to yt-dlp thumbnail); override per-subscription TMDB matches
 - **Post-processing** — SponsorBlock category removal, ffmpeg location, keep-video, episode-number padding
 - **Download** — concurrent downloads (live-applied), concurrent fragments, retries,
   fragment retries, rate limit, socket timeout, continue partial, no-overwrites
@@ -265,12 +270,15 @@ FastAPI  (served as socket_app on :8088)
 |-- Download Manager       ThreadPoolExecutor — keeps blocking yt-dlp calls off the asyncio loop
 |-- Subscription Worker     APScheduler AsyncIOScheduler — flat-playlist diff -> enqueue
 |-- Notification Dispatcher in-app + SMTP / Slack / Discord / Telegram / Pushover
-`-- Routes: /api/downloads  /api/subscriptions  /api/metadata
+|-- TMDB Artwork Orchestrator  Searches titles, fetches images, crops for multiple formats
+`-- Routes: /api/downloads  /api/subscriptions  /api/metadata  /api/tmdb
            /api/settings    /api/notifications  /api/notifications/channels
    |
 SQLite  (async SQLAlchemy 2.x + aiosqlite, single file, startup migrations)
    |
 yt-dlp  (YoutubeDL class; progress via progress_hooks)
+   |
+TMDB API (optional; title search + image fetch for artwork)
 ```
 
 **Key decisions**
@@ -280,6 +288,11 @@ yt-dlp  (YoutubeDL class; progress via progress_hooks)
 - The worker queue is a bare **wake token** — each pass re-reads the lowest `queue_position`
   `queued` row from the DB, so a reorder takes effect on the next pick.
 - Subscription dedup: a `seen_videos` table with `UNIQUE(subscription_id, video_id)`.
+- **Artwork sources:** TMDB (primary, when API key is set) → yt-dlp thumbnail (fallback).
+  Automatic title matching with channel-noise cleanup; per-subscription manual overrides via
+  `tmdb_id` + `tmdb_type` columns. Best-effort: missing images or API errors don't raise.
+  Writes `poster.jpg`, `background.jpg`, `logo.png`, `square.jpg`, `banner.jpg`, and seasonal
+  posters (TV only). All images are language-aware and ffmpeg-cropped to size.
 - Frontend state: colocated `useReducer` reducers in `Dashboard/index.tsx`; theme via
   `ThemeContext`; per-browser prefs via `UiPrefsContext`. No global store library.
 
@@ -316,6 +329,8 @@ The full REST endpoint list lives in
 | `DOWNLOAD_DIR` | `./downloads` | Root download folder |
 | `YTDLP_DIR` | `""` (Docker: `/ytdlp`) | Isolated yt-dlp install dir |
 | `CORS_ORIGINS` | `""` (any origin) | Comma-separated cross-origin allowlist for REST + WebSocket; restrict it when reachable from an untrusted network |
+| `TMDB_API_KEY` | `""` | TMDB v3 API key or v4 read-access token (optional; enables artwork from The Movie Database) |
+| `TMDB_LANGUAGE` | `en-US` | Preferred language for TMDB images (e.g., `en-US`, `de`, `fr`) |
 | `MAX_CONCURRENT_DOWNLOADS` | `1` | **Legacy** — set *Concurrent Downloads* in Settings -> Download |
 | `IMAGE_TAG` | `latest` | Docker image tag (compose only) |
 | `PORT` | `8088` | Host port (compose only) |
@@ -324,6 +339,40 @@ Values are loaded from the environment and an optional `.env` file. Runtime yt-d
 and all notification-channel credentials are stored in the database via the Settings UI,
 **not** in environment variables.
 
+### TMDB Artwork Setup (Optional)
+
+To enable artwork fetching from **The Movie Database (TMDB)**:
+
+1. **Get a TMDB API Key:**
+   - Create a free account at [themoviedb.org](https://www.themoviedb.org/settings/api)
+   - Generate a **v3 API key** (legacy) or **v4 read-access token** (recommended)
+   - Either format works with StreamSnap
+
+2. **Configure in StreamSnap:**
+   - **Docker:** Set `TMDB_API_KEY` and optionally `TMDB_LANGUAGE` in `docker-compose.yml` or `.env`
+   - **Local Dev:** Add to `backend/.env` or set as environment variables
+   - **Web UI:** Settings → Metadata & Thumbnails → TMDB API Key + Language
+
+3. **Verify Connection:**
+   - Open Settings → Metadata & Thumbnails → **Test TMDB connection**
+   - The test returns OK or explains what's wrong (invalid key, network error, etc.)
+
+4. **How It Works:**
+   - When you create a subscription, the playlist title is cleaned (removes "- Official Channel",
+     "- Season 2", trailing years, etc.) and searched against TMDB
+   - Exact-name matches win; TV is preferred over movies; results are ranked by popularity
+   - If the search guesses wrong, click the 🎬 icon on the subscription row to manually search
+     and pick the correct title
+   - Artwork is generated automatically or via the 🖼 button: `poster.jpg`, `background.jpg`,
+     `logo.png`, `banner.jpg`, `square.jpg`, and (for TV) seasonal posters
+   - Language preferences: posters and logos prefer your configured language; backdrops prefer
+     textless versions
+   - If TMDB fails (no key, no match, no images, API error), the app falls back to the first
+     video's thumbnail — all best-effort, never blocking
+
+**Language codes:** `en`, `de`, `fr`, `es`, `pt`, `ja`, `ko`, `ru`, `zh`, etc. See
+[TMDB language list](https://www.themoviedb.org/settings/languages).
+
 ---
 
 ## Data Model
@@ -331,7 +380,7 @@ and all notification-channel credentials are stored in the database via the Sett
 | Table | Key columns |
 |---|---|
 | `downloads` | id, url, title, status, percent, speed, eta, queue_position, format_spec, output_dir, output_path, error_message, subscription_id FK, ext, filesize, height, vcodec, acodec |
-| `subscriptions` | id, url, title, check_interval_minutes, last_checked_at, format_spec, output_template, is_active, download_existing, download_dir, notify |
+| `subscriptions` | id, url, title, check_interval_minutes, last_checked_at, format_spec, output_template, is_active, download_existing, download_dir, notify, tmdb_id, tmdb_type |
 | `seen_videos` | id, subscription_id FK, video_id, title, upload_date — `UNIQUE(subscription_id, video_id)` |
 | `notification_channels` | id, kind, name, config_json, events_json (per-channel filter; NULL = default set), is_enabled |
 | `notifications` | id, kind, title, body, thumbnail, payload_json, is_read, created_at |

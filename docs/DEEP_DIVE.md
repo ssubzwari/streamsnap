@@ -773,6 +773,114 @@ wiring needed.
 
 ---
 
+## 8. TMDB Artwork Integration
+
+Subscription folders can be populated with professional artwork from **The Movie Database (TMDB)** — a free, community-maintained database of movies and TV shows with extensive image libraries.
+
+### What it does
+
+When you create or update a subscription, StreamSnap can automatically search TMDB for the
+playlist's show/movie, fetch high-quality images, and generate six file types:
+
+- `poster.jpg` — vertical cover art (for Plex/Jellyfin posters)
+- `background.jpg` — horizontal backdrop (16:9 widescreen)
+- `logo.png` — clear logo (transparent PNG)
+- `square.jpg` — 1000×1000 centre-crop of poster (for squarish UI tiles)
+- `banner.jpg` — 1000×185 crop of backdrop (for header banners)
+- `seasonNN-poster.jpg` — per-season posters (TV only)
+
+Source: `backend/app/ytdl/tmdb.py`, `backend/app/ytdl/artwork.py`, `backend/app/routes/tmdb.py`.
+
+### Why it's built this way
+
+- **TMDB is the primary source; yt-dlp thumbnail is the fallback.** Automatic title matching
+  cleans playlist names (removes "- Official Channel", "- Season 2", trailing years, etc.),
+  searches `/search/multi`, and ranks results: exact name > TV over movies > popularity.
+- **Per-subscription manual overrides** via `subscriptions.tmdb_id` + `subscriptions.tmdb_type`
+  let you pin a subscription to the correct title when auto-matching guesses wrong. Set via
+  the 🎬 icon on a subscription row, which opens a search modal.
+- **Best-effort image handling:** missing images, failed downloads, or ffmpeg errors don't
+  raise — the app logs and degrades gracefully. This ensures artwork generation never blocks
+  a subscription's downloads.
+- **Language-aware selection:** posters and logos prefer your configured `TMDB_LANGUAGE`
+  (e.g., `en-US`, `de`, `fr`); backdrops prefer textless versions (for Plex compatibility).
+- **ffmpeg crops are generated server-side** because TMDB has no square or banner types.
+  `poster.jpg` is cropped 1000×1000 from the center; `banner.jpg` is 1000×185 from the top.
+- **Artwork is written per-show folder** (e.g., `/downloads/MyShow/poster.jpg`), not per-video,
+  so Plex/Jellyfin pick it up once and cache it. Regenerating via the 🖼 button overwrites
+  stale files.
+
+### Setup
+
+**Get a TMDB API Key:**
+1. Create a free account at [themoviedb.org](https://www.themoviedb.org/settings/api)
+2. Generate a **v3 API key** (legacy) or **v4 read-access token** (both work)
+3. Set `TMDB_API_KEY` environment variable or configure in Settings → Metadata & Thumbnails
+4. Optionally set `TMDB_LANGUAGE` (default: `en-US`) for image language preference
+
+**Test the connection:**
+- Settings → Metadata & Thumbnails → **Test TMDB connection**
+- Returns OK with rate limits, or an error with details (invalid key, network error, etc.)
+
+### How it works
+
+**When you create/update a subscription:**
+1. Playlist title is cleaned: "The Daily Show - Official Channel" → "The Daily Show"
+2. TMDB `/search/multi` is queried; results are sorted (exact match wins, TV over movies,
+   then popularity)
+3. For the winning result, `GET /configuration` fetches the image base URL and available
+   languages; `GET /{type}/{id}/images` fetches all posters, backdrops, logos
+4. For each image type, the best version is selected by language match or textless preference
+5. Images are downloaded and saved to the subscription folder
+6. If any step fails or returns no images, the app tries yt-dlp's thumbnail as a final fallback
+
+**Manual override workflow:**
+- Click the 🎬 icon on a subscription row
+- A search modal appears; enter a query (e.g., "Breaking Bad")
+- Results show poster thumbnails; pick the right one
+- The subscription's `tmdb_id` and `tmdb_type` are saved
+- Click the 🖼 button to regenerate artwork using the pinned TMDB entry
+
+**Regenerate artwork:**
+- Click the 🖼 button on any subscription
+- If `tmdb_id` is set, it uses the pinned entry; otherwise it searches again
+- New images overwrite old files; the log shows what was written and what failed
+
+### Edge cases & best practices
+
+- **Rate limiting:** TMDB allows ~40 requests/second per key. Regenerating artwork for many
+  subscriptions at once is safe; their requests queue. Monitor rate-limit headers if you have
+  thousands of subscriptions.
+- **No key = no TMDB artwork:** If `TMDB_API_KEY` is not set, the app falls back to yt-dlp's
+  thumbnail. Set the key in environment or Settings to enable TMDB.
+- **Images are language-aware:** Language preference applies to posters and logos. Backdrops
+  are searched for textless versions first (better for non-English locales); if none exist,
+  the default version is used.
+- **ffmpeg is optional:** TMDB images can be saved; square/banner crops require ffmpeg.
+  Without ffmpeg, square/banner are skipped (logged), but poster/background/logo are written.
+- **Manual overrides survive API failures:** Once you've pinned a subscription to a TMDB ID,
+  the subscription remembers it even if the API is down. Future regenerations will retry.
+- **Artwork doesn't affect downloads:** The 🖼 button and auto-generation happen in parallel
+  with downloads — a subscription's downloads continue while artwork is being fetched.
+
+### Security notes
+
+- TMDB keys are stored in the database (Settings table) or environment, never returned to
+  the browser. The API key is used server-side only.
+- Artwork images are sourced from TMDB's CDN (themoviedb.org). Stream. If run behind a
+  restrictive proxy, allow `*.themoviedb.org` and `*.tmdb.org` (image CDN).
+- ffmpeg is invoked to crop images; the input path is from TMDB's metadata, not user input.
+  No injection vector.
+
+### API endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/tmdb/status` | Verify API key (returns OK + rate limits, or error) |
+| `GET` | `/api/tmdb/search?query=...` | Search for a title; returns top 10 results with thumbnails |
+
+---
+
 ## Appendix: REST API Reference
 
 Base URL `http://<host>:8088`. Every path below is served under `/api` except `/health`.
@@ -782,6 +890,12 @@ Responses are JSON; `2xx` on success, `4xx`/`5xx` with `{"detail": "..."}` on er
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/metadata/resolve` | Resolve a URL -> title, thumbnail, duration, formats |
+
+### TMDB
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/tmdb/status` | Verify API key (returns OK + rate limits, or error) |
+| `GET` | `/api/tmdb/search?query=...` | Search for a title; returns top 10 results with thumbnails |
 
 ### Downloads
 | Method | Path | Purpose |
@@ -814,7 +928,7 @@ Responses are JSON; `2xx` on success, `4xx`/`5xx` with `{"detail": "..."}` on er
 | `PATCH` | `/api/subscriptions/{id}` | Update interval / format / template / active / notify |
 | `DELETE` | `/api/subscriptions/{id}` | Delete (cascades to seen-videos + downloads) |
 | `POST` | `/api/subscriptions/{id}/check` | Force an immediate poll (`202`) |
-| `POST` | `/api/subscriptions/{id}/artwork` | (Re)generate `poster.jpg` + `background.jpg` (`202`) |
+| `POST` | `/api/subscriptions/{id}/artwork` | (Re)generate artwork from TMDB or yt-dlp thumbnail (`202`) |
 
 ### Notifications
 | Method | Path | Purpose |
