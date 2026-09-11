@@ -63,6 +63,11 @@ class Subscription(Base):
     category: Mapped[str | None] = mapped_column(String, nullable=True)
     subcategory: Mapped[str | None] = mapped_column(String, nullable=True)
     tag: Mapped[str | None] = mapped_column(String, nullable=True)
+    # TMDB artwork override. NULL = search TMDB by title; set to pin the
+    # right title when the auto-match guesses wrong. tmdb_type is "tv" or
+    # "movie" (defaults to "tv" when only an id is given).
+    tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tmdb_type: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

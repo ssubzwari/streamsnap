@@ -108,6 +108,9 @@ class SubscriptionCreate(BaseModel):
     category: str | None = None
     subcategory: str | None = None
     tag: str | None = None
+    # Pin TMDB artwork to a specific title instead of the title search.
+    tmdb_id: int | None = None
+    tmdb_type: str | None = None
 
 
 class SubscriptionUpdate(BaseModel):
@@ -119,6 +122,8 @@ class SubscriptionUpdate(BaseModel):
     category: str | None = None
     subcategory: str | None = None
     tag: str | None = None
+    tmdb_id: int | None = None
+    tmdb_type: str | None = None
 
 
 class SubscriptionInfo(BaseModel):
@@ -138,6 +143,8 @@ class SubscriptionInfo(BaseModel):
     category: str | None = None
     subcategory: str | None = None
     tag: str | None = None
+    tmdb_id: int | None = None
+    tmdb_type: str | None = None
     created_at: datetime
 
 

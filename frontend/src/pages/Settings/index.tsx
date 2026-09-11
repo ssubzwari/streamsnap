@@ -33,6 +33,7 @@ import {
   updateChannel,
 } from "@/api/notifications";
 import { padEpisodeNumbers } from "@/api/downloads";
+import { getTmdbStatus, type TmdbStatus } from "@/api/tmdb";
 import { useTheme } from "@/theme/ThemeContext";
 import { BACKGROUND_OPTIONS } from "@/theme/types";
 import { useUiPrefs } from "@/ui/UiPrefsContext";
@@ -57,6 +58,8 @@ interface SettingsState {
   embed_thumbnail: string;
   write_thumbnail: string;
   subscription_artwork: string;
+  tmdb_api_key: string;
+  tmdb_language: string;
   write_info_json: string;
   write_description: string;
   embed_metadata: string;
@@ -114,6 +117,8 @@ const DEFAULTS: SettingsState = {
   embed_thumbnail: "false",
   write_thumbnail: "false",
   subscription_artwork: "true",
+  tmdb_api_key: "",
+  tmdb_language: "en",
   write_info_json: "false",
   write_description: "false",
   embed_metadata: "false",
@@ -227,6 +232,10 @@ export default function Settings({ onClose }: Props) {
   const [addTestResult, setAddTestResult] = useState<ChannelTestResult | null>(null);
   const [summaryInProgress, setSummaryInProgress] = useState(false);
 
+  // TMDB artwork (Metadata tab)
+  const [tmdbTesting, setTmdbTesting] = useState(false);
+  const [tmdbStatus, setTmdbStatus] = useState<TmdbStatus | null>(null);
+
   // ── yt-dlp updater state ──────────────────────────────────────────────────
   const [ytdlpInfo, setYtdlpInfo] = useState<YtdlpVersionInfo | null>(null);
   const [ytdlpUpdating, setYtdlpUpdating] = useState(false);
@@ -272,6 +281,26 @@ export default function Settings({ onClose }: Props) {
   const toggle = (key: keyof SettingsState) => {
     setS((prev) => ({ ...prev, [key]: prev[key] === "true" ? "false" : "true" }));
     setSaved(false);
+  };
+
+  // TMDB connection check (Settings → Metadata). Saves first so the key the
+  // user just typed is the one the backend tests.
+  const handleTmdbTest = async () => {
+    setTmdbTesting(true);
+    setTmdbStatus(null);
+    try {
+      await updateSettings(s as unknown as Record<string, string>);
+      setTmdbStatus(await getTmdbStatus());
+    } catch (err) {
+      setTmdbStatus({
+        configured: true,
+        ok: false,
+        language: s.tmdb_language,
+        error: err instanceof Error ? err.message : "TMDB test failed",
+      });
+    } finally {
+      setTmdbTesting(false);
+    }
   };
 
   const handleAddChannel = async () => {
@@ -587,10 +616,58 @@ export default function Settings({ onClose }: Props) {
                 </Row>
                 <Row>
                   <Toggle
-                    label="Subscription artwork for Plex (poster.jpg + background.jpg from the first video)"
+                    label="Subscription artwork for Plex / Jellyfin"
+                    hint="Writes poster, background, logo, banner, square art and season posters into each show folder."
                     checked={s.subscription_artwork !== "false"}
                     onChange={() => toggle("subscription_artwork")}
                   />
+                </Row>
+
+                <SectionTitle>TMDB Artwork</SectionTitle>
+                <p className={styles.authNote}>
+                  With a TMDB key, artwork comes from The Movie Database instead of the first
+                  video's thumbnail — proper poster, backdrop, clear logo, banner, square art and
+                  season posters. Without a key (or when a subscription has no TMDB match) the
+                  first video's thumbnail is used as before. Get a free key at
+                  {" "}themoviedb.org → Settings → API.
+                </p>
+                <Row>
+                  <Field label="TMDB API Key" hint="v3 API key or v4 read-access token">
+                    <input
+                      className={styles.input}
+                      type="password"
+                      value={s.tmdb_api_key}
+                      onChange={(e) => set("tmdb_api_key", e.target.value)}
+                      autoComplete="off"
+                      placeholder="Leave blank to use TMDB_API_KEY from .env"
+                    />
+                  </Field>
+                  <Field label="Artwork Language" hint="ISO 639-1 code — posters and logos prefer this language">
+                    <input
+                      className={styles.input}
+                      value={s.tmdb_language}
+                      onChange={(e) => set("tmdb_language", e.target.value)}
+                      autoComplete="off"
+                      placeholder="en"
+                    />
+                  </Field>
+                </Row>
+                <Row>
+                  <button
+                    className={styles.presetBtn}
+                    type="button"
+                    onClick={handleTmdbTest}
+                    disabled={tmdbTesting}
+                  >
+                    {tmdbTesting ? "Testing…" : "Test TMDB connection"}
+                  </button>
+                  {tmdbStatus && (
+                    <span className={styles.fieldHint} data-ok={tmdbStatus.ok}>
+                      {tmdbStatus.ok
+                        ? "Connected to TMDB."
+                        : tmdbStatus.error || "No TMDB API key configured."}
+                    </span>
+                  )}
                 </Row>
                 <SectionTitle>Metadata Files</SectionTitle>
                 <Row>

@@ -28,6 +28,7 @@ import {
   regenerateArtwork,
   updateSubscription,
 } from "@/api/subscriptions";
+import { searchTmdb, type TmdbMatch } from "@/api/tmdb";
 import {
   type DownloadCanceledPayload,
   type DownloadFailedPayload,
@@ -87,6 +88,14 @@ const ImageIcon = () => (
     <rect x="3" y="3" width="18" height="18" rx="2" />
     <circle cx="9" cy="9" r="2" />
     <path d="m21 15-4.35-4.35a2 2 0 0 0-2.83 0L3 21" />
+  </svg>
+);
+
+// Film-strip mark for the TMDB match picker.
+const TmdbIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="M7 4v16M17 4v16M2 9h5M2 15h5M17 9h5M17 15h5" />
   </svg>
 );
 
@@ -1211,12 +1220,75 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     setArtworkSubId(id);
     try {
       await regenerateArtwork(id);
-      setStatusToast("Artwork queued — poster.jpg / background.jpg will land in the show folder");
+      setStatusToast("Artwork queued — poster, background, logo and banner will land in the show folder");
     } catch (err) {
       console.error(err);
       setStatusToast("Could not fetch artwork");
     } finally {
       setArtworkSubId(null);
+    }
+  };
+
+  // ── TMDB match picker ─────────────────────────────────────────────────────
+  // Pins a subscription to a specific TMDB title when the automatic
+  // title search picks the wrong show (or nothing at all).
+  const [tmdbSub, setTmdbSub] = useState<SubscriptionInfo | null>(null);
+  const [tmdbQuery, setTmdbQuery] = useState("");
+  const [tmdbResults, setTmdbResults] = useState<TmdbMatch[]>([]);
+  const [tmdbBusy, setTmdbBusy] = useState(false);
+  const [tmdbError, setTmdbError] = useState<string | null>(null);
+
+  const runTmdbSearch = async (query: string) => {
+    if (!query.trim()) return;
+    setTmdbBusy(true);
+    setTmdbError(null);
+    try {
+      const res = await searchTmdb(query.trim());
+      setTmdbResults(res.results);
+      if (!res.results.length) setTmdbError(`No TMDB titles match "${res.query}"`);
+    } catch (err) {
+      console.error(err);
+      setTmdbResults([]);
+      setTmdbError(
+        err instanceof Error && err.message.includes("No TMDB API key")
+          ? "Add a TMDB API key in Settings → Metadata first."
+          : "TMDB search failed.",
+      );
+    } finally {
+      setTmdbBusy(false);
+    }
+  };
+
+  const openTmdbMatch = (sub: SubscriptionInfo) => {
+    setTmdbSub(sub);
+    setTmdbResults([]);
+    setTmdbError(null);
+    const query = sub.title ?? "";
+    setTmdbQuery(query);
+    void runTmdbSearch(query);
+  };
+
+  const applyTmdbMatch = async (match: TmdbMatch | null) => {
+    if (!tmdbSub) return;
+    setTmdbBusy(true);
+    try {
+      const updated = await updateSubscription(tmdbSub.id, {
+        tmdb_id: match ? match.id : 0,
+        tmdb_type: match ? match.kind : null,
+      });
+      dispatchSubs({ type: "UPDATE", patch: updated });
+      setTmdbSub(null);
+      if (match) {
+        await regenerateArtwork(updated.id);
+        setStatusToast(`Artwork queued from TMDB — ${match.name}`);
+      } else {
+        setStatusToast("TMDB match cleared — artwork falls back to the title search");
+      }
+    } catch (err) {
+      console.error(err);
+      setTmdbError("Could not save the TMDB match.");
+    } finally {
+      setTmdbBusy(false);
     }
   };
 
@@ -2273,9 +2345,21 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                           className={styles.iconBtn}
                           onClick={() => handleRegenArtwork(s.id)}
                           disabled={artworkSubId === s.id}
-                          title={artworkSubId === s.id ? "Fetching…" : "Fetch Plex artwork (poster + background)"}
+                          title={artworkSubId === s.id ? "Fetching…" : "Fetch artwork (poster, background, logo, banner, square, seasons)"}
                         >
                           <ImageIcon />
+                        </button>
+                        <button
+                          className={styles.iconBtn}
+                          onClick={() => openTmdbMatch(s)}
+                          title={
+                            s.tmdb_id
+                              ? `Artwork pinned to TMDB ${s.tmdb_type ?? "tv"}/${s.tmdb_id} — click to change`
+                              : "Match this show on TMDB"
+                          }
+                          style={{ opacity: s.tmdb_id ? 1 : 0.6 }}
+                        >
+                          <TmdbIcon />
                         </button>
                         <button
                           className={styles.iconBtn}
@@ -2314,6 +2398,96 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       {/* Settings modal lives in App.tsx so it's reachable from the Media
           tab too — keeping it here would mean unmounting it whenever the
           user switches tabs, breaking the gear button on Media. */}
+
+      {/* ── TMDB match picker ── */}
+      {tmdbSub && (
+        <div
+          className={styles.plOverlay}
+          onClick={() => !tmdbBusy && setTmdbSub(null)}
+        >
+          <div className={styles.plModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.plHeader}>
+              <div className={styles.plHeaderText}>
+                <h2 className={styles.plTitle}>Match on TMDB</h2>
+                <p className={styles.plSubtitle}>
+                  Pick the title this subscription&apos;s artwork should come from.
+                  {tmdbSub.tmdb_id
+                    ? ` Currently pinned to ${tmdbSub.tmdb_type ?? "tv"}/${tmdbSub.tmdb_id}.`
+                    : " Artwork currently matches on the playlist title."}
+                </p>
+              </div>
+              <button
+                className={styles.plClose}
+                onClick={() => setTmdbSub(null)}
+                disabled={tmdbBusy}
+              >
+                &#x2715;
+              </button>
+            </div>
+
+            <form
+              className={styles.tmdbSearch}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void runTmdbSearch(tmdbQuery);
+              }}
+            >
+              <input
+                className={styles.tmdbInput}
+                value={tmdbQuery}
+                onChange={(e) => setTmdbQuery(e.target.value)}
+                placeholder="Show or movie title"
+                autoFocus
+              />
+              <button className={styles.tmdbSearchBtn} type="submit" disabled={tmdbBusy}>
+                {tmdbBusy ? "Searching…" : "Search"}
+              </button>
+            </form>
+
+            <div className={styles.plList}>
+              {tmdbError && <p className={styles.plEmpty}>{tmdbError}</p>}
+              {!tmdbError && !tmdbResults.length && !tmdbBusy && (
+                <p className={styles.plEmpty}>Search TMDB to pick a title.</p>
+              )}
+              {tmdbResults.map((m) => (
+                <button
+                  key={`${m.kind}-${m.id}`}
+                  className={styles.tmdbResult}
+                  onClick={() => void applyTmdbMatch(m)}
+                  disabled={tmdbBusy}
+                  data-active={tmdbSub.tmdb_id === m.id && tmdbSub.tmdb_type === m.kind}
+                >
+                  {m.poster ? (
+                    <img className={styles.tmdbPoster} src={m.poster} alt="" loading="lazy" />
+                  ) : (
+                    <span className={styles.tmdbPosterEmpty} />
+                  )}
+                  <span className={styles.tmdbMeta}>
+                    <span className={styles.tmdbName}>
+                      {m.name}
+                      {m.year ? ` (${m.year})` : ""}
+                    </span>
+                    <span className={styles.tmdbKind}>
+                      {m.kind === "tv" ? "TV series" : "Movie"} · TMDB {m.id}
+                    </span>
+                    {m.overview && <span className={styles.tmdbOverview}>{m.overview}</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className={styles.plFooter}>
+              <button
+                className={styles.plRemove}
+                onClick={() => void applyTmdbMatch(null)}
+                disabled={tmdbBusy || !tmdbSub.tmdb_id}
+              >
+                Clear match
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Playlist / subscription review modal ── */}
       {playlistReview && (

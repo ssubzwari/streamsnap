@@ -1707,3 +1707,113 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/* ── TMDB match picker ───────────────────────────────────────────────────── */
+
+.tmdbSearch {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tmdbInput {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-surface-hi);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
+.tmdbInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.tmdbSearchBtn {
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  padding: 0 var(--space-4);
+  cursor: pointer;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.tmdbSearchBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.tmdbResult {
+  display: flex;
+  gap: var(--space-3);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  padding: var(--space-2);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.tmdbResult:hover:not(:disabled) {
+  background: var(--color-surface-hi);
+  border-color: var(--color-accent);
+}
+
+.tmdbResult[data-active="true"] {
+  border-color: var(--color-accent);
+}
+
+.tmdbResult:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.tmdbPoster,
+.tmdbPosterEmpty {
+  width: 46px;
+  height: 69px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--color-surface-hi);
+}
+
+.tmdbMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tmdbName {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.tmdbKind {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.tmdbOverview {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

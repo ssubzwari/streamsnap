@@ -127,6 +127,8 @@ ALLOWED_KEYS = {
     "keep_video",
     "pad_episode_numbers",
     "subscription_artwork",
+    "tmdb_api_key",
+    "tmdb_language",
     # Download
     "max_concurrent_downloads",
     "concurrent_fragments",

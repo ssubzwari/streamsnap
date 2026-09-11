@@ -11,7 +11,7 @@ _SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 # Bump this constant whenever a new _migrate_vN function is added.
 # Format: integer, monotonically increasing.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class Base(DeclarativeBase):
@@ -154,13 +154,26 @@ async def _migrate_v5(conn: AsyncConnection) -> None:
 
 
 # Registry — index N-1 contains the function that migrates to version N.
-# To add version 6: write _migrate_v6, append it here, set SCHEMA_VERSION = 6.
+async def _migrate_v6(conn: AsyncConnection) -> None:
+    """Add subscriptions.tmdb_id / tmdb_type — the per-subscription override
+    that pins TMDB artwork to a specific title instead of the title search."""
+    from sqlalchemy import text
+
+    sub_cols = await conn.run_sync(lambda c: _existing_cols(c, "subscriptions"))
+    if "tmdb_id" not in sub_cols:
+        await conn.execute(text("ALTER TABLE subscriptions ADD COLUMN tmdb_id INTEGER"))
+    if "tmdb_type" not in sub_cols:
+        await conn.execute(text("ALTER TABLE subscriptions ADD COLUMN tmdb_type VARCHAR"))
+
+
+# To add version 7: write _migrate_v7, append it here, set SCHEMA_VERSION = 7.
 _MIGRATIONS = [
     _migrate_v1,   # index 0 → reaches version 1
     _migrate_v2,   # index 1 → reaches version 2
     _migrate_v3,   # index 2 → reaches version 3
     _migrate_v4,   # index 3 → reaches version 4
     _migrate_v5,   # index 4 → reaches version 5
+    _migrate_v6,   # index 5 → reaches version 6
 ]
 
 
@@ -245,6 +258,12 @@ async def init_db() -> None:
             await conn.execute(
                 text("ALTER TABLE notification_channels ADD COLUMN events_json VARCHAR")
             )
+
+        sub_cols = await conn.run_sync(lambda c: _existing_cols(c, "subscriptions"))
+        if "tmdb_id" not in sub_cols:
+            await conn.execute(text("ALTER TABLE subscriptions ADD COLUMN tmdb_id INTEGER"))
+        if "tmdb_type" not in sub_cols:
+            await conn.execute(text("ALTER TABLE subscriptions ADD COLUMN tmdb_type VARCHAR"))
 
 
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:

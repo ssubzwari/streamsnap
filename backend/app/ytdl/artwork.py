@@ -1,6 +1,14 @@
-"""Subscription artwork — grab the first video's thumbnail and drop
-``poster.jpg`` + ``background.jpg`` into the show folder so Plex picks them
-up as the poster and the fanart/backdrop.
+"""Subscription artwork.
+
+Two sources, tried in order by :func:`fetch_subscription_artwork`:
+
+1. **TMDB** (``app.ytdl.tmdb``) — real show artwork: poster, background,
+   clear logo, banner, square art and season posters.
+2. **The first video's thumbnail** (:func:`fetch_playlist_artwork`) — the
+   original behaviour, used when TMDB has no key, no match, or no images.
+
+Files land in the show folder under the local-media names Plex / Jellyfin /
+Emby / Kodi look for.
 """
 
 import glob
@@ -103,3 +111,51 @@ def _run_ffmpeg(cmd: list[str]) -> bool:
     except (subprocess.SubprocessError, OSError) as exc:
         logger.warning("artwork: ffmpeg convert failed: %s", exc)
         return False
+
+
+def fetch_subscription_artwork(
+    video_url: str | None,
+    folder: str,
+    *,
+    title: str | None = None,
+    tmdb_api_key: str = "",
+    tmdb_id: int | None = None,
+    tmdb_type: str | None = None,
+    language: str = "en",
+    overwrite: bool = True,
+) -> dict:
+    """Write artwork for one subscription folder, TMDB first.
+
+    Returns ``{"source": "tmdb"|"thumbnail"|None, "written": [...],
+    "matched": {...}|None, "error": str|None}``. Best-effort throughout — a
+    TMDB miss silently degrades to the first video's thumbnail.
+    """
+    from app.ytdl.tmdb import fetch_tmdb_artwork
+
+    out: dict = {"source": None, "written": [], "matched": None, "error": None}
+
+    if tmdb_api_key and (tmdb_id or title):
+        res = fetch_tmdb_artwork(
+            folder,
+            api_key=tmdb_api_key,
+            title=title,
+            tmdb_id=tmdb_id,
+            tmdb_type=tmdb_type,
+            language=language,
+        )
+        out["matched"] = res["matched"]
+        if res["written"]:
+            out["source"] = "tmdb"
+            out["written"] = res["written"]
+            return out
+        out["error"] = res["error"]
+        logger.info("artwork: TMDB produced nothing (%s) — falling back to thumbnail",
+                    res["error"])
+
+    if video_url:
+        written = fetch_playlist_artwork(video_url, folder, overwrite=overwrite)
+        if written:
+            out["source"] = "thumbnail"
+            out["written"] = written
+            out["error"] = None
+    return out

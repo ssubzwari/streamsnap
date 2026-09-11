@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     # setting (Settings → Download), which defaults to 1 when unset.
     MAX_CONCURRENT_DOWNLOADS: int = 1
 
+    # TMDB artwork. Fallback only — the live values come from the
+    # `tmdb_api_key` / `tmdb_language` settings (Settings → Metadata).
+    # Accepts a v3 API key or a v4 read-access token.
+    TMDB_API_KEY: str = ""
+    TMDB_LANGUAGE: str = "en"
+
     # Directory where yt-dlp is installed as an isolated Python package.
     # Empty string = use the system/venv-installed yt-dlp (local dev default).
     # In Docker this is set to /ytdlp (a named volume) so updates persist.

@@ -16,6 +16,9 @@ export interface SubscriptionCreate {
   category?: string | null;
   subcategory?: string | null;
   tag?: string | null;
+  /** Pin TMDB artwork to a specific title instead of matching on the playlist title. */
+  tmdb_id?: number | null;
+  tmdb_type?: "tv" | "movie" | null;
 }
 
 export interface SubscriptionUpdate {
@@ -26,6 +29,9 @@ export interface SubscriptionUpdate {
   category?: string | null;
   subcategory?: string | null;
   tag?: string | null;
+  /** 0 clears the pin and returns the subscription to title-matching. */
+  tmdb_id?: number | null;
+  tmdb_type?: "tv" | "movie" | null;
 }
 
 export async function listSubscriptions(): Promise<SubscriptionInfo[]> {

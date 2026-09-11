@@ -9,6 +9,7 @@ from app.config import settings
 from app.db import get_session
 from app.models import SeenVideo, Subscription
 from app.schemas import SubscriptionCreate, SubscriptionInfo, SubscriptionUpdate
+from app.services.artwork_settings import artwork_enabled, tmdb_config
 from app.services.subscription_worker import schedule_subscription, unschedule_subscription
 from app.utils import (
     category_subdir,
@@ -20,20 +21,31 @@ from app.utils import (
 router = APIRouter(prefix="/api/subscriptions", tags=["subscriptions"])
 
 
-async def _generate_artwork(video_url: str, folder: str) -> None:
-    """Best-effort: fetch the first video's thumbnail into poster/background."""
-    from app.ytdl.artwork import fetch_playlist_artwork
+async def _generate_artwork(
+    video_url: str | None,
+    folder: str,
+    *,
+    title: str | None = None,
+    tmdb_id: int | None = None,
+    tmdb_type: str | None = None,
+) -> None:
+    """Best-effort artwork for a subscription folder: TMDB when a key is
+    configured and the show resolves, otherwise the first video's thumbnail."""
+    from app.ytdl.artwork import fetch_subscription_artwork
 
-    await asyncio.to_thread(fetch_playlist_artwork, video_url, folder)
+    api_key, language = await tmdb_config()
+    await asyncio.to_thread(
+        fetch_subscription_artwork,
+        video_url,
+        folder,
+        title=title,
+        tmdb_api_key=api_key,
+        tmdb_id=tmdb_id,
+        tmdb_type=tmdb_type,
+        language=language,
+    )
 
 
-async def _artwork_enabled() -> bool:
-    from app.models import Setting
-    from app.db import get_sessionmaker
-
-    async with get_sessionmaker()() as s:
-        row = await s.get(Setting, "subscription_artwork")
-    return (row.value if row and row.value is not None else "true") != "false"
 
 
 @router.post("", response_model=SubscriptionInfo, status_code=201)
@@ -114,6 +126,8 @@ async def create_subscription(
         category=req.category,
         subcategory=req.subcategory,
         tag=req.tag,
+        tmdb_id=req.tmdb_id,
+        tmdb_type=req.tmdb_type or ("tv" if req.tmdb_id else None),
     )
     session.add(sub)
     # Flush (not commit) so sub.id is assigned while we're still in one
@@ -172,11 +186,19 @@ async def create_subscription(
     # Register APScheduler job
     await schedule_subscription(sub)
 
-    # Plex artwork: poster.jpg + background.jpg from the first video's
-    # thumbnail. Runs after the response so it never delays subscribing.
+    # Show artwork: TMDB (poster / background / logo / banner / square /
+    # season posters) with the first video's thumbnail as the fallback. Runs
+    # after the response so it never delays subscribing.
     first = playlist_data["entries"][0]["url"] if playlist_data["entries"] else None
-    if first and await _artwork_enabled():
-        background_tasks.add_task(_generate_artwork, first, download_dir)
+    if await artwork_enabled():
+        background_tasks.add_task(
+            _generate_artwork,
+            first,
+            download_dir,
+            title=sub.title,
+            tmdb_id=sub.tmdb_id,
+            tmdb_type=sub.tmdb_type,
+        )
 
     return SubscriptionInfo.model_validate(sub)
 
@@ -226,6 +248,15 @@ async def update_subscription(
         sub.subcategory = req.subcategory or None
     if req.tag is not None:
         sub.tag = req.tag or None
+    if req.tmdb_id is not None:
+        # 0 clears the pin and returns the sub to title-matching.
+        sub.tmdb_id = req.tmdb_id or None
+        if sub.tmdb_id and not (req.tmdb_type or sub.tmdb_type):
+            sub.tmdb_type = "tv"
+        if not sub.tmdb_id:
+            sub.tmdb_type = None
+    if req.tmdb_type is not None:
+        sub.tmdb_type = req.tmdb_type or None
 
     await session.commit()
     await session.refresh(sub)
@@ -281,8 +312,9 @@ async def regenerate_artwork(
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """(Re)build poster.jpg + background.jpg for an existing subscription from
-    its first (earliest-seen) video's thumbnail."""
+    """(Re)build artwork for an existing subscription — TMDB first (poster,
+    background, logo, banner, square art, season posters), falling back to the
+    first (earliest-seen) video's thumbnail."""
     from app.ytdl.service import extract_playlist
 
     sub = await session.get(Subscription, sub_id)
@@ -313,8 +345,16 @@ async def regenerate_artwork(
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc))
 
-    if not video_url:
+    api_key, _ = await tmdb_config()
+    if not video_url and not api_key:
         raise HTTPException(status_code=422, detail="No videos found for this subscription")
 
-    background_tasks.add_task(_generate_artwork, video_url, folder)
+    background_tasks.add_task(
+        _generate_artwork,
+        video_url,
+        folder,
+        title=sub.title,
+        tmdb_id=sub.tmdb_id,
+        tmdb_type=sub.tmdb_type,
+    )
     return {"queued": True, "folder": folder}

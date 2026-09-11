@@ -18,7 +18,14 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db import init_db
-from app.routes import downloads, metadata, notifications, settings as settings_route, subscriptions
+from app.routes import (
+    downloads,
+    metadata,
+    notifications,
+    settings as settings_route,
+    subscriptions,
+    tmdb,
+)
 from app.services.download_manager import download_manager
 from app.services.subscription_worker import start_scheduler, stop_scheduler
 from app.ws import sio
@@ -89,6 +96,7 @@ app.include_router(downloads.router)
 app.include_router(subscriptions.router)
 app.include_router(notifications.router)
 app.include_router(settings_route.router)
+app.include_router(tmdb.router)
 
 
 @app.get("/health")

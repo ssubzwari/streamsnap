@@ -69,6 +69,9 @@ export interface SubscriptionInfo {
   category: string | null;
   subcategory: string | null;
   tag: string | null;
+  /** When set, artwork comes from this TMDB title instead of a title search. */
+  tmdb_id: number | null;
+  tmdb_type: "tv" | "movie" | null;
   created_at: string;
 }
 
