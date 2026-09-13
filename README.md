@@ -73,7 +73,10 @@ full card while queued rows shrink to a single line.
 ### Downloads
 - **Video & audio** — single videos, whole channels, or playlists
 - **Format picker** — Type / Codec / Format / Quality dropdowns compose a format spec with
-  fallback chains, plus one-click presets (Best, 1080p mp4, 720p mp4, Audio m4a, Audio opus)
+  fallback chains, plus one-click presets (Best, 1080p mp4, 720p mp4, Audio m4a, Audio opus,
+  Audio FLAC)
+- **FLAC audio** — selecting `flac` converts with ffmpeg, since no major site serves it;
+  where a site does serve lossless it is used directly and only remuxed
 - **Playlist review** — a playlist URL is expanded asynchronously (no reverse-proxy timeout
   on large channels); a review list lets you drop individual videos before anything is
   enqueued; all videos land in one named subfolder
@@ -165,7 +168,8 @@ full card while queued rows shrink to a single line.
 Download · Output · Auth · Advanced · Notifications**
 
 - **Format** — format spec + presets, quality cap (height), preferred codec (vp9/av1/h264),
-  audio codec (opus/aac/m4a), merge container (mp4/mkv/webm), `--prefer-free-formats`, `--format-sort`
+  audio codec (opus/aac/m4a/mp3/flac — only `flac` triggers a conversion), merge container
+  (mp4/mkv/webm), `--prefer-free-formats`, `--format-sort`
 - **Subtitles** — write subs, languages, auto-subs, embed, convert format
 - **Metadata & Thumbnails** — embed/write thumbnail, write info JSON, write description,
   embed metadata, embed chapters; per-show artwork toggle + TMDB API key & language settings
@@ -377,6 +381,26 @@ To enable artwork fetching from **The Movie Database (TMDB)**:
 
 **Language codes:** `en`, `de`, `fr`, `es`, `pt`, `ja`, `ko`, `ru`, `zh`, etc. See
 [TMDB language list](https://www.themoviedb.org/settings/languages).
+
+### FLAC Audio
+
+Pick **flac** in the Format dropdown (or the *Audio FLAC* preset, or Settings → Format →
+Audio Codec) and you get a `.flac` file.
+
+FLAC works differently from the other audio formats. `m4a` and `opus` are *selected* — the
+format spec matches a stream the site already serves. No major site serves FLAC, so it is
+produced by converting with ffmpeg instead. StreamSnap still asks for a lossless source
+first, so on a site that does serve FLAC (Bandcamp) the file is used directly and only
+remuxed, never re-encoded.
+
+> **From YouTube, FLAC is not a quality upgrade.** YouTube's audio streams are Opus or AAC,
+> both lossy. Converting them to FLAC losslessly compresses audio that is already lossy —
+> roughly 3–5× the file size for exactly the same sound. It is worth choosing when you want
+> one format across your library, or on sites that genuinely serve lossless.
+
+**Requires ffmpeg on `PATH`.** It is already a prerequisite, but FLAC is the first feature
+that fails outright without it rather than degrading, so the download stays in its original
+format if the conversion can't run.
 
 ### Music Tags
 

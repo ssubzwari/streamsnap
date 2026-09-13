@@ -1,9 +1,9 @@
 # StreamSnap — Deep Dive Guide
 
-In-depth documentation for nine core subsystems: **Subscriptions**, **Notifications**,
+In-depth documentation for ten core subsystems: **Subscriptions**, **Notifications**,
 the **Queue / concurrency model**, the **Database backup & restore system**, the
 **Download activity meter**, the **yt-dlp updater**, **background themes**, **TMDB
-artwork**, and **music tags**.
+artwork**, **music tags**, and **audio formats**.
 
 Each section covers what the feature does and why it's built the way it is, a realistic
 example, and the edge cases / best practices / security notes that matter in production.
@@ -985,6 +985,89 @@ Resulting tags:
 | Key | Default | Effect |
 |---|---|---|
 | `music_tags` | `true` | Tag audio downloads. Set to `false` to leave files exactly as yt-dlp wrote them. |
+
+---
+
+## 10. Audio Formats (and why FLAC is different)
+
+### What it does
+
+Audio downloads are normally **selected**, not converted. `buildFormatSpec()` emits
+`bestaudio[ext=m4a]/bestaudio` and yt-dlp picks a stream the site already serves — no
+re-encoding, no ffmpeg pass, no quality loss.
+
+FLAC can't work that way. No major site serves it: YouTube's audio streams are Opus (webm)
+or AAC (m4a), so there is no `ext=flac` stream for a selector to match. Asking for FLAC
+therefore means *converting*, which is a postprocessor, not a format string.
+
+Source: `_audio_conversion_target()` and `_converted_audio_path()` in
+`backend/app/ytdl/service.py`; `buildFormatSpec()` in `frontend/src/pages/Dashboard/index.tsx`.
+
+### How it works
+
+`_audio_conversion_target()` spots a FLAC request from either source the UI can set it
+from — `flac` anywhere in the format spec (the dropdown and the preset), or
+`audio_codec=flac` in Settings (the app-wide default, which is what subscriptions use).
+When it matches, yt-dlp gets:
+
+```python
+{"key": "FFmpegExtractAudio", "preferredcodec": "flac"}
+```
+
+The format spec still leads with `bestaudio[ext=flac]`, so a site that genuinely serves
+lossless is used directly — and because yt-dlp's extract-audio step skips re-encoding when
+the source codec already matches, the postprocessor just remuxes. Asking for FLAC is
+therefore safe on lossless and lossy sources alike.
+
+### Two things that are easy to get wrong
+
+**1. The postprocessor is added _before_ `_apply_settings()`.**
+
+Settings → Advanced documents the raw options JSON as *"applied last, overrides
+everything"*, and it is merged with `dict.update()`. Adding the postprocessor after that
+merge would silently break the contract — raw JSON could no longer remove or replace it.
+There is a test pinning this.
+
+**2. `requested_downloads` reports the _pre-conversion_ file.**
+
+yt-dlp tells you what it *downloaded*. For a converted download that is the original
+`.webm`, which the extract-audio step then deletes. Recording it would leave a completed
+download pointing at a file that no longer exists — the row would look fine and every
+"play" and "download to device" would 404.
+
+`_converted_audio_path()` swaps the extension and confirms the file exists before the row
+records it, falling back to the original when the conversion produced nothing (ffmpeg
+missing, or a failed convert).
+
+### Edge cases & best practices
+
+- **ffmpeg is required.** It is already a prerequisite for merging 1080p+, but FLAC is the
+  first feature that fails outright without it rather than degrading. Without ffmpeg the
+  file stays in its downloaded format.
+- **Converting from a lossy source gains nothing.** FLAC losslessly compresses audio that
+  was already lossy — ~3–5× the size for identical sound. Offer it for library consistency
+  and for genuinely lossless sites, not as a quality upgrade over Opus.
+- **The tagger handles FLAC**, so converted files still get artist/album/album-artist
+  written (section 9) — `.flac` uses Vorbis comments.
+- **Only FLAC is converted.** `mp3` and the other `audio_codec` values are deliberately
+  *not* wired to a postprocessor. Two pre-existing quirks follow from that and are left
+  alone on purpose:
+  - `audio_codec` is otherwise a dead setting — stored, allowlisted and rendered, but read
+    by nothing.
+  - `bestaudio[ext=mp3]` never matches on YouTube, so picking **mp3** silently yields an
+    m4a or opus file.
+
+  Wiring them up is a few lines on the same code path, but it would start re-encoding
+  downloads for anyone who had already set one of those values — and lossy→lossy
+  re-encoding loses quality. That is a deliberate behaviour change, not a bug fix, so it
+  waits for someone to ask for it.
+
+### Security notes
+
+- The postprocessor runs the ffmpeg that yt-dlp already uses for merging; no new binary and
+  no new invocation surface.
+- `_converted_audio_path()` only ever rewrites the extension of a path yt-dlp produced and
+  requires the result to exist on disk, so it cannot be steered at an arbitrary file.
 
 ---
 
