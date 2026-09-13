@@ -296,6 +296,41 @@ def _apply_settings(ydl_opts: dict, s: dict) -> None:
             pass
 
 
+def _audio_conversion_target(format_spec: str, app_settings: dict | None) -> str | None:
+    """The codec this download has to be converted to with ffmpeg, or None.
+
+    Only FLAC needs this. No major site serves it — YouTube's audio streams are
+    Opus or AAC — so a format selector alone can never produce one, and yt-dlp
+    has to run the extract-audio postprocessor instead. When a site *does* serve
+    FLAC the postprocessor remuxes rather than re-encoding, so asking for it is
+    safe either way.
+
+    Every other audio format keeps being driven by the format spec alone, which
+    is how they have always worked.
+    """
+    if "flac" in (format_spec or "").lower():
+        return "flac"
+    if (app_settings or {}).get("audio_codec") == "flac":
+        return "flac"
+    return None
+
+
+def _converted_audio_path(path: str, ext: str) -> str:
+    """The post-conversion file for *path*.
+
+    yt-dlp reports the file it *downloaded* in ``requested_downloads``, which
+    for a converted download is the original the extract-audio step has since
+    replaced. Recording that would leave the row pointing at a file that no
+    longer exists.
+    """
+    import os
+
+    if not path or path.lower().endswith(f".{ext}"):
+        return path
+    converted = f"{os.path.splitext(path)[0]}.{ext}"
+    return converted if os.path.exists(converted) else path
+
+
 def run_download(
     download_id: int,
     url: str,
@@ -329,6 +364,15 @@ def run_download(
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_path)
         ydl_opts["merge_output_format"] = "mp4"
 
+    # Added before the app settings so the raw-options JSON keeps its documented
+    # "applied last, overrides everything" behaviour.
+    audio_format = _audio_conversion_target(format_spec, app_settings)
+    if audio_format:
+        ydl_opts["postprocessors"] = [
+            {"key": "FFmpegExtractAudio", "preferredcodec": audio_format},
+            *ydl_opts.get("postprocessors", []),
+        ]
+
     # Merge app settings on top (user-configured overrides)
     if app_settings:
         _apply_settings(ydl_opts, app_settings)
@@ -342,6 +386,9 @@ def run_download(
         out_path = requested[0].get("filepath") or requested[0].get("filename", "")
     else:
         out_path = ydl.prepare_filename(info)
+
+    if audio_format:
+        out_path = _converted_audio_path(out_path, audio_format)
 
     # Zero-pad single-digit episode numbers (Episode 1 → Episode 01) on the
     # final file and any sidecars, mirroring the admin rename.sh logic.

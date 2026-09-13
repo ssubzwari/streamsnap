@@ -531,6 +531,7 @@ export default function Settings({ onClose }: Props) {
                       ["720p mp4", "bestvideo*[height<=720]+bestaudio/best[height<=720]"],
                       ["Audio m4a", "bestaudio[ext=m4a]/bestaudio"],
                       ["Audio opus", "bestaudio[ext=webm]/bestaudio"],
+                      ["Audio FLAC", "bestaudio[ext=flac]/bestaudio/best"],
                     ].map(([label, spec]) => (
                       <button key={label} className={styles.presetBtn} onClick={() => set("format_spec", spec)}>
                         {label}
@@ -559,13 +560,17 @@ export default function Settings({ onClose }: Props) {
                       <option value="av1">AV1</option>
                     </select>
                   </Field>
-                  <Field label="Audio Codec">
+                  <Field
+                    label="Audio Codec"
+                    hint="FLAC converts with ffmpeg; the others are matched from the format spec"
+                  >
                     <select className={styles.select} value={s.audio_codec} onChange={(e) => set("audio_codec", e.target.value)}>
                       <option value="auto">Auto</option>
                       <option value="opus">Opus</option>
                       <option value="aac">AAC</option>
                       <option value="m4a">M4A</option>
                       <option value="mp3">MP3</option>
+                      <option value="flac">FLAC (convert)</option>
                     </select>
                   </Field>
                   <Field label="Merge Container">
