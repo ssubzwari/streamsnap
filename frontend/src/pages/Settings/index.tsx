@@ -64,6 +64,7 @@ interface SettingsState {
   write_description: string;
   embed_metadata: string;
   embed_chapters: string;
+  music_tags: string;
   // Post-processing
   sponsorblock_remove: string;
   ffmpeg_location: string;
@@ -123,6 +124,7 @@ const DEFAULTS: SettingsState = {
   write_description: "false",
   embed_metadata: "false",
   embed_chapters: "false",
+  music_tags: "true",
   sponsorblock_remove: "",
   ffmpeg_location: "",
   keep_video: "false",
@@ -678,6 +680,23 @@ export default function Settings({ onClose }: Props) {
                 <Row>
                   <Toggle label="Embed Metadata" checked={bool("embed_metadata")} onChange={() => toggle("embed_metadata")} />
                   <Toggle label="Embed Chapters" checked={bool("embed_chapters")} onChange={() => toggle("embed_chapters")} />
+                </Row>
+
+                <SectionTitle>Music Tags</SectionTitle>
+                <p className={styles.authNote}>
+                  Writes artist, title, album, album artist, year and track number into
+                  audio downloads, so Plex and Jellyfin file them under the right artist
+                  instead of &quot;Various Artists&quot;. Values come from the site&apos;s own
+                  metadata where it has any, otherwise from the file name
+                  (&quot;Artist - Title&quot;). No lookups, nothing to configure.
+                </p>
+                <Row>
+                  <Toggle
+                    label="Tag audio downloads"
+                    hint="Applies to audio-only downloads. Video files are untouched."
+                    checked={s.music_tags !== "false"}
+                    onChange={() => toggle("music_tags")}
+                  />
                 </Row>
               </div>
             )}

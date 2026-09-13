@@ -349,7 +349,37 @@ def run_download(
     if s.get("pad_episode_numbers", "true") != "false" and out_path:
         out_path = _pad_episode_output(out_path)
 
+    # Tag last: the path is final here, and info_dict is still in scope with
+    # whatever artist/album metadata the site supplied.
+    if s.get("music_tags", "true") != "false" and out_path:
+        _tag_audio_file(out_path, info)
+
     return out_path
+
+
+def _tag_audio_file(path: str, info: dict) -> None:
+    """Write music tags into a finished audio download.
+
+    Best-effort: a container mutagen can't write leaves the file exactly as
+    yt-dlp produced it. Video downloads are skipped entirely.
+    """
+    import logging
+
+    from app.utils import is_audio_path
+    from app.ytdl.tagging import TaggingError, can_tag, write_tags
+    from app.ytdl.trackinfo import derive_tags
+
+    if not is_audio_path(path) or not can_tag(path):
+        return
+
+    tags = derive_tags(path, info)
+    if not tags:
+        return
+
+    try:
+        write_tags(path, tags)
+    except TaggingError as exc:
+        logging.getLogger(__name__).warning("could not tag %s: %s", path, exc)
 
 
 def _pad_episode_output(path: str) -> str:

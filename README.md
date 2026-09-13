@@ -98,6 +98,10 @@ full card while queued rows shrink to a single line.
   `square.jpg`, and seasonal posters from **TMDB** (The Movie Database) when an API key is
   configured; falls back to the first video's thumbnail. Manually override TMDB matches
   per subscription when auto-matching guesses wrong
+- **Music tags** — audio downloads get artist, title, album, **album artist**, year and
+  track number written into the file, so Plex and Jellyfin file them under the right
+  artist instead of "Various Artists". Values come from the site's own metadata where it
+  has any, otherwise from the file name (`Artist - Title`). No API key, no lookups
 
 ### Subscriptions
 - **Channel / playlist subscriptions** — new videos download automatically on a configurable
@@ -166,7 +170,8 @@ Download · Output · Auth · Advanced · Notifications**
 - **Metadata & Thumbnails** — embed/write thumbnail, write info JSON, write description,
   embed metadata, embed chapters; per-show artwork toggle + TMDB API key & language settings
   (TMDB provides `poster.jpg`, `background.jpg`, `logo.png`, `banner.jpg`, `square.jpg`,
-  seasonal posters; falls back to yt-dlp thumbnail); override per-subscription TMDB matches
+  seasonal posters; falls back to yt-dlp thumbnail); override per-subscription TMDB matches;
+  music tags for audio downloads (on by default)
 - **Post-processing** — SponsorBlock category removal, ffmpeg location, keep-video, episode-number padding
 - **Download** — concurrent downloads (live-applied), concurrent fragments, retries,
   fragment retries, rate limit, socket timeout, continue partial, no-overwrites
@@ -372,6 +377,37 @@ To enable artwork fetching from **The Movie Database (TMDB)**:
 
 **Language codes:** `en`, `de`, `fr`, `es`, `pt`, `ja`, `ko`, `ru`, `zh`, etc. See
 [TMDB language list](https://www.themoviedb.org/settings/languages).
+
+### Music Tags
+
+Audio downloads are tagged automatically — nothing to configure, no API key. Turn it off
+in Settings → Metadata & Thumbnails → **Music Tags**.
+
+Each field is resolved in order, first hit wins:
+
+| Tag | Source |
+|---|---|
+| artist / title | the site's own `artist` + `track` fields → the file name, split as `Artist - Title` → the channel name (a trailing `- Topic` is stripped) |
+| **album artist** | the site's `album_artist` → whatever artist was resolved above → the channel |
+| album | the site's `album` → the playlist title → the download folder's name |
+| year | `release_year` → `release_date` → `upload_date` |
+| track number | position in the playlist |
+
+**Why album artist matters:** Plex files an album under *Various Artists* when its tracks
+carry no consistent `ALBUMARTIST`. StreamSnap never writes an artist without also writing
+an album artist, which is what keeps your library filed correctly.
+
+Works on `.m4a`, `.mp3`, `.opus`, `.ogg`, `.oga`, `.flac` and `.m4b`. Video downloads are
+left alone, and a file that can't be tagged is left exactly as yt-dlp wrote it — tagging
+never fails a download.
+
+Two limits worth knowing:
+
+- **New downloads only.** Files already on disk keep their current tags.
+- **Per-file.** A genuinely multi-artist playlist gets one album artist per track, so Plex
+  shows several albums rather than a single compilation.
+
+Cover art is not written here — use **Embed Thumbnail** on the same Settings tab.
 
 ---
 

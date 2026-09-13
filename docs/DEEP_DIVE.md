@@ -1,8 +1,9 @@
 # StreamSnap — Deep Dive Guide
 
-In-depth documentation for seven core subsystems: **Subscriptions**, **Notifications**,
+In-depth documentation for nine core subsystems: **Subscriptions**, **Notifications**,
 the **Queue / concurrency model**, the **Database backup & restore system**, the
-**Download activity meter**, the **yt-dlp updater**, and **background themes**.
+**Download activity meter**, the **yt-dlp updater**, **background themes**, **TMDB
+artwork**, and **music tags**.
 
 Each section covers what the feature does and why it's built the way it is, a realistic
 example, and the edge cases / best practices / security notes that matter in production.
@@ -878,6 +879,112 @@ Source: `backend/app/ytdl/tmdb.py`, `backend/app/ytdl/artwork.py`, `backend/app/
 |---|---|---|
 | `GET` | `/api/tmdb/status` | Verify API key (returns OK + rate limits, or error) |
 | `GET` | `/api/tmdb/search?query=...` | Search for a title; returns top 10 results with thumbnails |
+
+---
+
+## 9. Music Tags
+
+### What it does
+
+Audio ripped from a video site arrives with no tags at all — no artist, no album, no track
+number, just whatever the uploader typed as a title. Plex and Jellyfin then file the whole
+folder under **Various Artists**, because that is what a media server does with an album
+whose tracks carry no consistent `ALBUMARTIST`.
+
+Every finished audio download is now tagged in place. Nothing to configure and no API key:
+the values come from what the download already knows.
+
+Source: `backend/app/ytdl/trackinfo.py` (deriving the values),
+`backend/app/ytdl/tagging.py` (writing them), hooked from `run_download` in
+`backend/app/ytdl/service.py`.
+
+### Why it's built this way
+
+- **No external lookup.** An earlier version matched tracks against MusicBrainz, by
+  acoustic fingerprint and by title. It was dropped: YouTube titles rarely line up with a
+  catalogue entry, so tracks either went untagged or matched the *wrong* recording, which
+  is worse than no tag. Deriving locally is instant, works offline and cannot mismatch.
+- **The file name is a first-class source.** yt-dlp writes the file as the video title, so
+  the name on disk is the most faithful description of what the user actually downloaded.
+- **Splitting is conservative.** `Artist - Title` is only split on a separator with
+  *spaces around it*, so `Jay-Z`, `Blink-182` and `Spider-Man Theme` survive intact. A
+  greedy hyphen split mangles more names than it fixes.
+- **Tagging is the last step of `run_download`.** By then the path is final (after the
+  merge and the episode-number rename) and `info_dict` is still in scope, so no metadata
+  has to be plumbed through the progress queue and no background task is needed.
+- **mutagen, not ffmpeg.** Tags are edited in place — no re-encode, no temporary file, no
+  extra process.
+
+### How a tag is resolved
+
+Each field takes the first source that yields a value:
+
+| Tag | Source order |
+|---|---|
+| `title` | `info_dict["track"]` → file name (right of the separator) → cleaned video title |
+| `artist` | `info_dict["artist"]` / `["artists"]` → file name (left of the separator) → channel, `- Topic` stripped |
+| `album_artist` | `info_dict["album_artist"]` → the resolved `artist` → channel |
+| `album` | `info_dict["album"]` → `playlist_title` → the download folder's name |
+| `date` | `release_year` → `release_date` → `upload_date` (year only) |
+| `track_number` / `track_total` | `playlist_index` / `playlist_count` |
+| `genre` | `info_dict["genre"]` |
+
+YouTube Music entries populate `artist`, `track`, `album` and `release_year` properly, so
+they tag exactly. An ordinary video has none of them and falls through to the file name.
+
+### The album-artist rule
+
+This is the part that fixes the reported symptom, so it is worth stating plainly:
+
+> `derive_tags()` never returns an `artist` without also returning an `album_artist`.
+
+A missing album artist is precisely what makes Plex say *Various Artists*. Whenever an
+artist is resolved, the album artist is set to the same value (or to the site's explicit
+`album_artist` when it gave one, or to the channel when nothing else is available).
+
+### Example
+
+```
+Downloaded file:  /downloads/Chill Mix/Radiohead - Creep (Official Video).m4a
+info_dict:        {} (an ordinary video — no music metadata)
+
+Resulting tags:
+  title        Creep            <- "(Official Video)" stripped, right of " - "
+  artist       Radiohead        <- left of " - "
+  album_artist Radiohead        <- mirrors the artist; this is the Plex fix
+  album        Chill Mix        <- the download folder
+```
+
+### Edge cases & best practices
+
+- **New downloads only.** Files already on disk are not retouched. Re-download a track to
+  tag it, or tag the existing library with a dedicated tool (Picard, beets).
+- **Per-file, not per-folder.** The tagger sees one file at a time, so it cannot notice
+  that a folder's tracks disagree with each other. A genuinely multi-artist playlist gets
+  a correct-but-different album artist per track, and Plex shows several albums rather
+  than one compilation. Set a single artist by hand if you want them grouped.
+- **Supported containers:** `.m4a`, `.m4b`, `.mp4`, `.mp3`, `.opus`, `.ogg`, `.oga`,
+  `.flac`. Anything else is skipped silently.
+- **Video downloads are never touched** — the hook checks the extension first.
+- **Tagging never fails a download.** It runs after the file is complete, and a mutagen
+  error is caught and logged. A download that succeeded is never reported as failed
+  because of a tag.
+- **Re-tagging is idempotent.** Re-downloading over a tagged file replaces frames rather
+  than stacking duplicates.
+- **Cover art is not written here.** Use yt-dlp's own *Embed Thumbnail* option on the same
+  Settings tab.
+
+### Security notes
+
+- No network access and no credentials — everything is derived from the download itself.
+- mutagen parses the file the app just wrote; a malformed file raises and is caught, so a
+  corrupt download cannot crash the worker.
+
+### Settings
+
+| Key | Default | Effect |
+|---|---|---|
+| `music_tags` | `true` | Tag audio downloads. Set to `false` to leave files exactly as yt-dlp wrote them. |
 
 ---
 
