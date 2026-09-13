@@ -121,6 +121,7 @@ ALLOWED_KEYS = {
     "write_description",
     "embed_metadata",
     "embed_chapters",
+    "music_tags",
     # Post-processing
     "sponsorblock_remove",
     "ffmpeg_location",
