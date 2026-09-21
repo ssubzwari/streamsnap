@@ -190,6 +190,10 @@ function buildFormatSpec(
 ): string {
   if (type === "audio") {
     const ext = format !== "auto" ? format : "m4a";
+    // FLAC is reached by converting with ffmpeg, not by picking a format — no
+    // major site serves it. Prefer a lossless source when one exists, then fall
+    // back to the best audio available for the backend to convert.
+    if (ext === "flac") return "bestaudio[ext=flac]/bestaudio/best";
     return `bestaudio[ext=${ext}]/bestaudio`;
   }
 
@@ -1408,6 +1412,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                 <option value="mkv">mkv</option>
                 {type === "audio" && <option value="m4a">m4a</option>}
                 {type === "audio" && <option value="mp3">mp3</option>}
+                {type === "audio" && <option value="flac">flac</option>}
               </select>
             </label>
             <label className={styles.dropdownLabel}>
