@@ -74,7 +74,13 @@ full card while queued rows shrink to a single line.
 - **Video & audio** — single videos, whole channels, or playlists
 - **Format picker** — Type / Codec / Format / Quality dropdowns compose a format spec with
   fallback chains, plus one-click presets (Best, 1080p mp4, 720p mp4, Audio m4a, Audio opus,
-  Audio FLAC)
+  Audio FLAC). The Format list follows the Type, and each option says what it costs:
+
+  | Type | Options |
+  |---|---|
+  | Video | `mp4 — most compatible`, `webm — smaller file`, `mkv — any codec` |
+  | Audio | `opus — best quality`, `m4a — most compatible`, `flac — lossless, largest`, `mp3 — re-encoded, lower quality` |
+
 - **FLAC audio** — selecting `flac` converts with ffmpeg, since no major site serves it;
   where a site does serve lossless it is used directly and only remuxed
 - **Playlist review** — a playlist URL is expanded asynchronously (no reverse-proxy timeout
@@ -168,7 +174,7 @@ full card while queued rows shrink to a single line.
 Download · Output · Auth · Advanced · Notifications**
 
 - **Format** — format spec + presets, quality cap (height), preferred codec (vp9/av1/h264),
-  audio codec (opus/aac/m4a/mp3/flac — only `flac` triggers a conversion), merge container
+  audio codec (opus/aac/m4a/mp3/flac — only `flac` triggers a conversion app-wide), merge container
   (mp4/mkv/webm), `--prefer-free-formats`, `--format-sort`
 - **Subtitles** — write subs, languages, auto-subs, embed, convert format
 - **Metadata & Thumbnails** — embed/write thumbnail, write info JSON, write description,

@@ -1049,18 +1049,41 @@ missing, or a failed convert).
   and for genuinely lossless sites, not as a quality upgrade over Opus.
 - **The tagger handles FLAC**, so converted files still get artist/album/album-artist
   written (section 9) — `.flac` uses Vorbis comments.
-- **Only FLAC is converted.** `mp3` and the other `audio_codec` values are deliberately
-  *not* wired to a postprocessor. Two pre-existing quirks follow from that and are left
-  alone on purpose:
-  - `audio_codec` is otherwise a dead setting — stored, allowlisted and rendered, but read
-    by nothing.
-  - `bestaudio[ext=mp3]` never matches on YouTube, so picking **mp3** silently yields an
-    m4a or opus file.
+- **`_CONVERTED_AUDIO_CODECS` lists what gets converted: `flac` and `mp3`.** mp3 is the
+  mirror image of FLAC — sites serve Opus or AAC, so an mp3 has to be re-encoded from one
+  of them, losing quality on the way. It is offered because some libraries and devices
+  still expect mp3, and because a dropdown entry that silently handed you an m4a was worse
+  than an honest one.
+- **The app-wide `audio_codec` setting only drives FLAC.** Picking mp3 per download is an
+  explicit request for that re-encode; a stored default that quietly re-encoded every audio
+  download would be a quality loss nobody asked for. `audio_codec` does nothing for any
+  other value.
 
-  Wiring them up is a few lines on the same code path, but it would start re-encoding
-  downloads for anyone who had already set one of those values — and lossy→lossy
-  re-encoding loses quality. That is a deliberate behaviour change, not a bug fix, so it
-  waits for someone to ask for it.
+### The Format dropdown
+
+`FORMAT_OPTIONS` in `frontend/src/pages/Dashboard/index.tsx` is keyed by download type, so
+the list only ever offers formats that can apply:
+
+| Type | Options |
+|---|---|
+| video | `Auto`, `mp4 — most compatible`, `webm — smaller file`, `mkv — any codec` |
+| audio | `Auto`, `opus — best quality`, `m4a — most compatible`, `flac — lossless, largest`, `mp3 — re-encoded, lower quality` |
+
+Video entries are **containers**, so they are labelled by what the choice actually changes.
+Resolution is the Quality dropdown's job and mkv is not "better" than mp4 — tiering them
+would imply a difference that does not exist.
+
+The audio ranking deliberately contradicts the usual "FLAC is best" assumption, because it
+is not true of a video site: YouTube's best audio stream is Opus, FLAC only re-packages
+that same lossy audio into a file 3–5× the size, and mp3 is re-encoded from it. **Do not
+"fix" the order to match expectations.**
+
+`opus` maps to `bestaudio[ext=webm]/bestaudio` — Opus ships inside a webm container, which
+is why `webm` used to be the only way to ask for it, and why it was easy to miss.
+
+Switching Type resets Format to `auto` (the two lists share nothing else), and the **Codec
+and Quality dropdowns are disabled for audio** because `buildFormatSpec()` ignores both
+there — they were previously live controls that did nothing.
 
 ### Security notes
 

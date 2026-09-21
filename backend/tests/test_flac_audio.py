@@ -21,13 +21,23 @@ def test_flac_as_the_app_default_triggers_conversion():
     assert _audio_conversion_target("bestaudio/best", {"audio_codec": "flac"}) == "flac"
 
 
-def test_other_audio_formats_are_left_to_the_format_spec():
-    """Only FLAC is converted. mp3/m4a/opus keep behaving exactly as before —
-    changing them would silently re-encode downloads nobody asked to change."""
-    for spec in ("bestaudio[ext=m4a]/bestaudio", "bestaudio[ext=mp3]/bestaudio",
-                 "bestaudio[ext=webm]/bestaudio", "bestaudio/best"):
+def test_mp3_in_the_format_spec_triggers_conversion():
+    """Sites serve Opus or AAC, so an mp3 has to be re-encoded from one. Picking
+    it in the dropdown is an explicit request for that."""
+    assert _audio_conversion_target("bestaudio[ext=mp3]/bestaudio/best", None) == "mp3"
+
+
+def test_natively_available_formats_are_left_to_the_format_spec():
+    """m4a and opus are streams the site already serves — selecting one must
+    never re-encode it."""
+    for spec in ("bestaudio[ext=m4a]/bestaudio", "bestaudio[ext=webm]/bestaudio",
+                 "bestaudio/best"):
         assert _audio_conversion_target(spec, None) is None
 
+
+def test_only_flac_is_driven_by_the_app_wide_setting():
+    """A stored mp3 default would re-encode every audio download — a quality
+    loss nobody asked for. Per-download mp3 is explicit; a default is not."""
     for codec in ("auto", "opus", "aac", "m4a", "mp3", ""):
         assert _audio_conversion_target("bestaudio/best", {"audio_codec": codec}) is None
 

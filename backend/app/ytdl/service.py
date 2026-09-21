@@ -296,6 +296,11 @@ def _apply_settings(ydl_opts: dict, s: dict) -> None:
             pass
 
 
+# Audio codecs no major site serves, so they can only be reached by converting
+# with ffmpeg rather than by selecting a stream.
+_CONVERTED_AUDIO_CODECS = ("flac", "mp3")
+
+
 def _audio_conversion_target(format_spec: str, app_settings: dict | None) -> str | None:
     """The codec this download has to be converted to with ffmpeg, or None.
 
@@ -305,8 +310,11 @@ def _audio_conversion_target(format_spec: str, app_settings: dict | None) -> str
     FLAC the postprocessor remuxes rather than re-encoding, so asking for it is
     safe either way.
 
-    FLAC conversion is only applied to audio-only downloads. For video downloads,
-    the FLAC audio_codec setting is ignored to avoid merge+conversion complexity.
+    mp3 is the same story for the opposite reason: sites serve Opus or AAC, so
+    an mp3 has to be re-encoded from one of them.
+
+    Conversion is only applied to audio-only downloads. For video downloads the
+    audio_codec setting is ignored, to avoid merge+conversion complexity.
     """
     spec = (format_spec or "").lower()
 
@@ -316,8 +324,12 @@ def _audio_conversion_target(format_spec: str, app_settings: dict | None) -> str
     if not is_audio_only:
         return None
 
-    if "flac" in spec:
-        return "flac"
+    for codec in _CONVERTED_AUDIO_CODECS:
+        if codec in spec:
+            return codec
+    # Only FLAC is driven by the app-wide setting. Picking mp3 per download is
+    # an explicit choice; making a stored default re-encode every audio
+    # download would be a quality loss nobody asked for.
     if (app_settings or {}).get("audio_codec") == "flac":
         return "flac"
     return None
