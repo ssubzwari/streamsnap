@@ -180,6 +180,33 @@ function ReorderControls({
   );
 }
 
+// ── Format options ────────────────────────────────────────────────────────────
+
+// What the Format dropdown offers for each download type. Video entries are
+// containers, so they're labelled by what the choice actually changes rather
+// than by a quality tier — resolution is the Quality dropdown's job.
+//
+// The audio ranking deliberately contradicts the usual "FLAC is best"
+// assumption, because it isn't true of a video site: YouTube's best audio
+// stream is Opus, and FLAC only re-packages that same lossy audio into a much
+// larger file. mp3 is worse still — it has to be re-encoded from the Opus or
+// AAC stream, losing quality on the way.
+const FORMAT_OPTIONS: Record<string, [string, string][]> = {
+  video: [
+    ["auto", "Auto"],
+    ["mp4", "mp4 — most compatible"],
+    ["webm", "webm — smaller file"],
+    ["mkv", "mkv — any codec"],
+  ],
+  audio: [
+    ["auto", "Auto"],
+    ["opus", "opus — best quality"],
+    ["m4a", "m4a — most compatible"],
+    ["flac", "flac — lossless, largest"],
+    ["mp3", "mp3 — re-encoded, lower quality"],
+  ],
+};
+
 // ── Format spec builder ───────────────────────────────────────────────────────
 
 function buildFormatSpec(
@@ -189,11 +216,15 @@ function buildFormatSpec(
   codec: string,
 ): string {
   if (type === "audio") {
+    // Opus ships inside a webm container, so that's what the selector asks for.
+    if (format === "opus") return "bestaudio[ext=webm]/bestaudio";
+    // FLAC and mp3 are reached by converting with ffmpeg, not by picking a
+    // format — no major site serves either. The [ext=…] filter still leads so a
+    // site that does serve one natively is used directly; otherwise it falls
+    // through and the backend spots the codec in the spec and converts.
+    if (format === "flac") return "bestaudio[ext=flac]/bestaudio/best";
+    if (format === "mp3") return "bestaudio[ext=mp3]/bestaudio/best";
     const ext = format !== "auto" ? format : "m4a";
-    // FLAC is reached by converting with ffmpeg, not by picking a format — no
-    // major site serves it. Prefer a lossless source when one exists, then fall
-    // back to the best audio available for the backend to convert.
-    if (ext === "flac") return "bestaudio[ext=flac]/bestaudio/best";
     return `bestaudio[ext=${ext}]/bestaudio`;
   }
 
@@ -1379,7 +1410,12 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               <select
                 className={styles.dropdown}
                 value={type}
-                onChange={(e) => setType(e.target.value)}
+                onChange={(e) => {
+                  setType(e.target.value);
+                  // The two format lists share only "auto", so a carried-over
+                  // choice (mp4 under Audio) would be unselectable.
+                  setFormat("auto");
+                }}
               >
                 <option value="video">Video</option>
                 <option value="audio">Audio</option>
@@ -1391,6 +1427,10 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                 className={styles.dropdown}
                 value={codec}
                 onChange={(e) => setCodec(e.target.value)}
+                // Video codecs only — buildFormatSpec ignores this for audio,
+                // so leaving it live would offer H.264 for a music download.
+                disabled={type === "audio"}
+                title={type === "audio" ? "Video downloads only" : undefined}
               >
                 <option value="auto">Auto</option>
                 <option value="h264">H.264</option>
@@ -1406,13 +1446,9 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                 value={format}
                 onChange={(e) => setFormat(e.target.value)}
               >
-                <option value="auto">Auto</option>
-                <option value="mp4">mp4</option>
-                <option value="webm">webm</option>
-                <option value="mkv">mkv</option>
-                {type === "audio" && <option value="m4a">m4a</option>}
-                {type === "audio" && <option value="mp3">mp3</option>}
-                {type === "audio" && <option value="flac">flac</option>}
+                {FORMAT_OPTIONS[type].map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </label>
             <label className={styles.dropdownLabel}>
@@ -1421,6 +1457,10 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                 className={styles.dropdown}
                 value={quality}
                 onChange={(e) => setQuality(e.target.value)}
+                // Resolution is meaningless for audio; the Format dropdown
+                // carries the quality choice there instead.
+                disabled={type === "audio"}
+                title={type === "audio" ? "Video downloads only" : undefined}
               >
                 <option value="best">Best</option>
                 {type === "video" && <option value="2160">4K</option>}
