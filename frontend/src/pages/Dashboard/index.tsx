@@ -217,7 +217,10 @@ function buildFormatSpec(
 ): string {
   if (type === "audio") {
     // Opus ships inside a webm container, so that's what the selector asks for.
-    if (format === "opus") return "bestaudio[ext=webm]/bestaudio";
+    // Opus is served inside a webm container, so selecting it alone writes a
+    // .webm — an extension the tagger skips and Plex won't scan. The backend
+    // spots "opus" here and remuxes it into a proper .opus (no re-encode).
+    if (format === "opus") return "bestaudio[ext=opus]/bestaudio[ext=webm]/bestaudio";
     // FLAC and mp3 are reached by converting with ffmpeg, not by picking a
     // format — no major site serves either. The [ext=…] filter still leads so a
     // site that does serve one natively is used directly; otherwise it falls

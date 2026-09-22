@@ -1049,11 +1049,23 @@ missing, or a failed convert).
   and for genuinely lossless sites, not as a quality upgrade over Opus.
 - **The tagger handles FLAC**, so converted files still get artist/album/album-artist
   written (section 9) — `.flac` uses Vorbis comments.
-- **`_CONVERTED_AUDIO_CODECS` lists what gets converted: `flac` and `mp3`.** mp3 is the
-  mirror image of FLAC — sites serve Opus or AAC, so an mp3 has to be re-encoded from one
-  of them, losing quality on the way. It is offered because some libraries and devices
-  still expect mp3, and because a dropdown entry that silently handed you an m4a was worse
-  than an honest one.
+- **`_CONVERTED_AUDIO_CODECS` lists what goes through the step: `flac`, `mp3` and `opus`**
+  — for three different reasons.
+  - **mp3** is the mirror image of FLAC: sites serve Opus or AAC, so an mp3 has to be
+    re-encoded from one of them, losing quality on the way. It is offered because some
+    libraries and devices still expect it, and because a dropdown entry that silently
+    handed you an m4a was worse than an honest one.
+  - **opus** is a *container* problem, not a codec one, and the only one of the three that
+    costs nothing. YouTube already serves Opus — but inside a **webm** container, so
+    selecting it wrote a `.webm`. That extension is not in `utils.AUDIO_EXTS`, so
+    `is_audio_path()` rejected it, `_tag_audio_file()` returned early, and the file reached
+    Plex with no artist or album — in a container Plex won't scan into a music library
+    anyway. The step copies the stream (`-c:a copy`) into an Ogg container named `.opus`:
+    a **remux, no re-encode, no quality loss**.
+
+    An audio-only spec asking for `ext=webm` is also treated as an opus request. That is
+    what the *Audio opus* preset emitted before this, and it is still stored in existing
+    subscriptions and settings rows, which would otherwise keep producing untaggable files.
 - **The app-wide `audio_codec` setting only drives FLAC.** Picking mp3 per download is an
   explicit request for that re-encode; a stored default that quietly re-encoded every audio
   download would be a quality loss nobody asked for. `audio_codec` does nothing for any
@@ -1078,8 +1090,10 @@ is not true of a video site: YouTube's best audio stream is Opus, FLAC only re-p
 that same lossy audio into a file 3–5× the size, and mp3 is re-encoded from it. **Do not
 "fix" the order to match expectations.**
 
-`opus` maps to `bestaudio[ext=webm]/bestaudio` — Opus ships inside a webm container, which
-is why `webm` used to be the only way to ask for it, and why it was easy to miss.
+`opus` maps to `bestaudio[ext=opus]/bestaudio[ext=webm]/bestaudio` — a site serving Opus
+natively is used directly, otherwise YouTube's webm-wrapped stream is picked up and
+remuxed to `.opus` (see above). That `webm` entry is why `webm` used to be the only way to
+ask for Opus, and why it was easy to miss.
 
 Switching Type resets Format to `auto` (the two lists share nothing else), and the **Codec
 and Quality dropdowns are disabled for audio** because `buildFormatSpec()` ignores both

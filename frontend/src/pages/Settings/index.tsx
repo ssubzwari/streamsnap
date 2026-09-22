@@ -530,7 +530,7 @@ export default function Settings({ onClose }: Props) {
                       ["1080p mp4", "bestvideo*[height<=1080]+bestaudio/best[height<=1080]", ""],
                       ["720p mp4", "bestvideo*[height<=720]+bestaudio/best[height<=720]", ""],
                       ["Audio m4a", "bestaudio[ext=m4a]/bestaudio", "m4a"],
-                      ["Audio opus", "bestaudio[ext=webm]/bestaudio", "opus"],
+                      ["Audio opus", "bestaudio[ext=opus]/bestaudio[ext=webm]/bestaudio", "opus"],
                       ["Audio FLAC", "bestaudio[ext=flac]/bestaudio/best", "flac"],
                     ].map(([label, spec, codec]) => (
                       <button
