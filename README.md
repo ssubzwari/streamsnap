@@ -441,7 +441,20 @@ Two limits worth knowing:
 - **Per-file.** A genuinely multi-artist playlist gets one album artist per track, so Plex
   shows several albums rather than a single compilation.
 
-Cover art is not written here — use **Embed Thumbnail** on the same Settings tab.
+### Album art
+
+Every audio download also drops the video thumbnail into its folder as **`cover.jpg`** —
+where Plex and Jellyfin look for album art. Without it the music grid is grey boxes: the
+TMDB artwork above is for *show* folders (TMDB has no music artists), and yt-dlp's
+**Embed Thumbnail** option is off by default.
+
+It's a sidecar file rather than an embedded tag, so it works for every format — flac, m4a,
+opus and mp3 all use the same image. Fetched **once per folder**, so a forty-track album
+pulls one file, not forty. YouTube serves thumbnails as `.webp`, which Plex can't read, so
+ffmpeg converts them.
+
+Turned off along with tags by the **Music Tags** toggle. If you'd rather have the art
+inside each file as well, switch on **Embed Thumbnail** — the two are independent.
 
 ---
 
