@@ -280,3 +280,56 @@ def test_the_hook_tags_a_real_audio_file(tmp_path):
     assert id3["TPE2"].text == ["Radiohead"]
     assert id3["TIT2"].text == ["Creep"]
     assert id3["TALB"].text == ["Pablo Honey"]
+
+
+# ── Embedded per-track artwork ────────────────────────────────────────────────
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"fake png body"
+JPG = b"\xff\xd8\xff\xe0" + b"fake jpeg body"
+
+
+def test_cover_is_embedded_in_id3(tmp_path):
+    """The picture a player shows while the track plays."""
+    from mutagen.mp3 import MP3
+
+    path = _silent_mp3(tmp_path / "track.mp3")
+    tagging.write_tags(path, TAGS, JPG, "image/jpeg")
+
+    apic = MP3(path).tags.getall("APIC")
+    assert len(apic) == 1
+    assert apic[0].data == JPG
+    assert apic[0].mime == "image/jpeg"
+    assert apic[0].type == 3          # front cover
+
+
+def test_re_tagging_replaces_the_picture(tmp_path):
+    """Re-downloading over a tagged file must not stack a second image."""
+    from mutagen.mp3 import MP3
+
+    path = _silent_mp3(tmp_path / "track.mp3")
+    tagging.write_tags(path, TAGS, JPG, "image/jpeg")
+    tagging.write_tags(path, TAGS, PNG, "image/png")
+
+    apic = MP3(path).tags.getall("APIC")
+    assert len(apic) == 1
+    assert apic[0].data == PNG
+    assert apic[0].mime == "image/png"
+
+
+def test_tags_still_write_without_a_cover(tmp_path):
+    """A missing thumbnail costs the picture, never the tags."""
+    from mutagen.mp3 import MP3
+
+    path = _silent_mp3(tmp_path / "track.mp3")
+    tagging.write_tags(path, TAGS, None)
+
+    id3 = MP3(path).tags
+    assert id3["TIT2"].text == ["Creep"]
+    assert not id3.getall("APIC")
+
+
+def test_picture_block_is_a_front_cover():
+    pic = tagging._picture(JPG, "image/jpeg")
+    assert pic.data == JPG
+    assert pic.mime == "image/jpeg"
+    assert pic.type == 3
