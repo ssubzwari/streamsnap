@@ -159,3 +159,76 @@ def fetch_subscription_artwork(
             out["written"] = written
             out["error"] = None
     return out
+
+
+# ── Music cover art ───────────────────────────────────────────────────────────
+
+# Plex reads album art from cover.jpg in the album's folder (folder.jpg also
+# works). This is a sidecar rather than an embedded tag, which is what makes it
+# format-independent — the same file serves flac, m4a, opus and mp3 alike.
+_MUSIC_COVER_NAME = "cover"
+_IMAGE_EXTS = ("jpg", "jpeg", "png", "webp", "bmp", "gif")
+
+
+def write_music_cover(
+    folder: str, thumbnail_url: str | None, *, overwrite: bool = False
+) -> str | None:
+    """Write *thumbnail_url* into *folder* as ``cover.jpg`` for Plex to use as
+    album art. Returns the path written, or None.
+
+    Written **once per folder**: an album of forty tracks fetches one image, not
+    forty. Pass ``overwrite=True`` to replace an existing cover.
+
+    Best-effort — a missing URL, a failed fetch or a missing ffmpeg leaves the
+    folder exactly as it was.
+    """
+    import urllib.error
+    import urllib.request
+
+    if not thumbnail_url or not os.path.isdir(folder):
+        return None
+
+    existing = [
+        p for p in glob.glob(os.path.join(folder, f"{_MUSIC_COVER_NAME}.*"))
+        if p.rsplit(".", 1)[-1].lower() in _IMAGE_EXTS
+    ]
+    if existing and not overwrite:
+        return None
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src_ext = os.path.splitext(thumbnail_url.split("?")[0])[1].lower() or ".jpg"
+        src = os.path.join(tmp, f"src{src_ext}")
+        try:
+            req = urllib.request.Request(thumbnail_url, headers={"User-Agent": "StreamSnap"})
+            with urllib.request.urlopen(req, timeout=20) as resp, open(src, "wb") as fh:
+                shutil.copyfileobj(resp, fh)
+        except (urllib.error.URLError, OSError) as exc:
+            logger.warning("artwork: cover download failed (%s): %s", thumbnail_url, exc)
+            return None
+
+        # YouTube usually serves .webp, which Plex won't read — convert. If
+        # ffmpeg isn't around, keep whatever we fetched under its own extension
+        # rather than writing a .jpg that isn't one.
+        dest_ext = ".jpg"
+        if src_ext in (".jpg", ".jpeg"):
+            final = src
+        else:
+            final = os.path.join(tmp, "cover.jpg")
+            ffmpeg = _ffmpeg_bin()
+            if not (ffmpeg and _run_ffmpeg([ffmpeg, "-y", "-i", src, final])):
+                final, dest_ext = src, src_ext
+
+        dest = os.path.join(folder, f"{_MUSIC_COVER_NAME}{dest_ext}")
+        try:
+            shutil.copyfile(final, dest)
+        except OSError as exc:
+            logger.warning("artwork: could not write %s: %s", dest, exc)
+            return None
+
+        for stale in existing:
+            if stale != dest:
+                try:
+                    os.remove(stale)
+                except OSError:
+                    pass
+        return dest

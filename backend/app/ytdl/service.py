@@ -432,8 +432,37 @@ def run_download(
     # whatever artist/album metadata the site supplied.
     if s.get("music_tags", "true") != "false" and out_path:
         _tag_audio_file(out_path, info)
+        _write_audio_cover(out_path, info)
 
     return out_path
+
+
+def _write_audio_cover(path: str, info: dict) -> None:
+    """Write the video thumbnail as ``cover.jpg`` beside a finished audio file.
+
+    Plex reads album art from ``cover.jpg`` in the album's folder. Nothing else
+    provides it: the TMDB artwork feature covers *show* folders and TMDB has no
+    music artists, and yt-dlp's *Embed Thumbnail* option is off by default — so
+    without this an audio download reaches Plex with no art at all.
+
+    A sidecar rather than an embedded tag, which is what makes it work for every
+    container. Written once per folder, so an album fetches one image.
+
+    Best-effort: never raises, and skips video downloads entirely.
+    """
+    import logging
+    import os
+
+    from app.utils import is_audio_path
+    from app.ytdl.artwork import write_music_cover
+
+    if not is_audio_path(path):
+        return
+
+    try:
+        write_music_cover(os.path.dirname(path), info.get("thumbnail"))
+    except Exception as exc:  # noqa: BLE001 — art must never fail a download
+        logging.getLogger(__name__).warning("could not write cover art: %s", exc)
 
 
 def _tag_audio_file(path: str, info: dict) -> None:
