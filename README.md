@@ -441,20 +441,31 @@ Two limits worth knowing:
 - **Per-file.** A genuinely multi-artist playlist gets one album artist per track, so Plex
   shows several albums rather than a single compilation.
 
-### Album art
+### Artwork
 
-Every audio download also drops the video thumbnail into its folder as **`cover.jpg`** —
-where Plex and Jellyfin look for album art. Without it the music grid is grey boxes: the
-TMDB artwork above is for *show* folders (TMDB has no music artists), and yt-dlp's
-**Embed Thumbnail** option is off by default.
+Audio downloads get artwork at **two levels**, because media players use them for two
+different things:
 
-It's a sidecar file rather than an embedded tag, so it works for every format — flac, m4a,
-opus and mp3 all use the same image. Fetched **once per folder**, so a forty-track album
-pulls one file, not forty. YouTube serves thumbnails as `.webp`, which Plex can't read, so
-ffmpeg converts them.
+| | Where it goes | Scope | What it's for |
+|---|---|---|---|
+| **Embedded art** | inside each audio file | **per track** | the image your player shows while that song plays |
+| **`cover.jpg`** | in the folder | **per album** | the album tile in Plex's library grid |
 
-Turned off along with tags by the **Music Tags** toggle. If you'd rather have the art
-inside each file as well, switch on **Embed Thumbnail** — the two are independent.
+**Each track gets its own picture.** Download a playlist of different songs and every file
+carries that song's own thumbnail — exactly what you saw on the playlist page. It goes in
+whichever slot the format uses (`APIC` for mp3, the `covr` atom for m4a, a picture block
+for flac, a `METADATA_BLOCK_PICTURE` comment for opus and ogg), so it works everywhere.
+Re-downloading over a tagged file replaces the picture rather than adding a second one.
+
+**`cover.jpg`** is a sidecar written once per folder — a forty-track album fetches one
+image, not forty. Without it the music grid is grey boxes: the TMDB artwork above is for
+*show* folders and TMDB has no music artists.
+
+YouTube serves thumbnails as `.webp`, which Plex won't read and most players won't render
+from a tag, so ffmpeg converts them to JPEG.
+
+Both are covered by the **Music Tags** toggle. yt-dlp's separate **Embed Thumbnail**
+option is independent and no longer needed for this.
 
 ---
 
