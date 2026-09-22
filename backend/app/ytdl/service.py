@@ -296,22 +296,28 @@ def _apply_settings(ydl_opts: dict, s: dict) -> None:
             pass
 
 
-# Audio codecs no major site serves, so they can only be reached by converting
-# with ffmpeg rather than by selecting a stream.
-_CONVERTED_AUDIO_CODECS = ("flac", "mp3")
+# Audio codecs that need ffmpeg's extract-audio step rather than a plain format
+# selection. Order matters only in that the first match in the spec wins.
+_CONVERTED_AUDIO_CODECS = ("flac", "mp3", "opus")
 
 
 def _audio_conversion_target(format_spec: str, app_settings: dict | None) -> str | None:
-    """The codec this download has to be converted to with ffmpeg, or None.
+    """The codec this download has to be run through ffmpeg for, or None.
 
-    Only FLAC needs this. No major site serves it — YouTube's audio streams are
-    Opus or AAC — so a format selector alone can never produce one, and yt-dlp
-    has to run the extract-audio postprocessor instead. When a site *does* serve
-    FLAC the postprocessor remuxes rather than re-encoding, so asking for it is
-    safe either way.
+    Three reasons a codec lands here, and they are not the same reason:
 
-    mp3 is the same story for the opposite reason: sites serve Opus or AAC, so
-    an mp3 has to be re-encoded from one of them.
+    - **flac** — no major site serves it (YouTube's audio streams are Opus or
+      AAC), so a format selector can never produce one. Where a site *does*
+      serve FLAC the step remuxes instead of re-encoding.
+    - **mp3** — the opposite: sites serve Opus or AAC, so an mp3 has to be
+      re-encoded from one of them, losing quality on the way.
+    - **opus** — a *container* problem, not a codec one. YouTube already serves
+      Opus, but inside a webm container, so selecting it writes a ``.webm``
+      file. That extension is not in ``utils.AUDIO_EXTS``, which means the music
+      tagger skips the file entirely and Plex won't scan it into a music
+      library. The extract-audio step copies the stream (``-c:a copy``) into an
+      Ogg container and names it ``.opus`` — **a remux, no re-encode, no
+      quality loss**.
 
     Conversion is only applied to audio-only downloads. For video downloads the
     audio_codec setting is ignored, to avoid merge+conversion complexity.
@@ -327,6 +333,12 @@ def _audio_conversion_target(format_spec: str, app_settings: dict | None) -> str
     for codec in _CONVERTED_AUDIO_CODECS:
         if codec in spec:
             return codec
+    # An audio-only download asking for webm is asking for the Opus stream —
+    # that is what the old "Audio opus" preset emitted, and it is still stored
+    # in existing subscriptions and settings. Treat it as an opus request so
+    # those keep working instead of silently producing untaggable .webm files.
+    if "ext=webm" in spec:
+        return "opus"
     # Only FLAC is driven by the app-wide setting. Picking mp3 per download is
     # an explicit choice; making a stored default re-encode every audio
     # download would be a quality loss nobody asked for.

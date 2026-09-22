@@ -27,11 +27,32 @@ def test_mp3_in_the_format_spec_triggers_conversion():
     assert _audio_conversion_target("bestaudio[ext=mp3]/bestaudio/best", None) == "mp3"
 
 
+def test_opus_is_remuxed_out_of_its_webm_container():
+    """YouTube serves Opus inside webm, so selecting it alone writes a .webm —
+    an extension is_audio_path() rejects, which means the tagger skips the file
+    and Plex won't scan it. The extract-audio step copies the stream into a
+    .opus container; no re-encode."""
+    assert _audio_conversion_target(
+        "bestaudio[ext=opus]/bestaudio[ext=webm]/bestaudio", None
+    ) == "opus"
+
+
+def test_the_old_opus_preset_spec_still_resolves_to_opus():
+    """`bestaudio[ext=webm]` is what the preset emitted before this fix, and it
+    is still stored in existing subscriptions and settings rows."""
+    assert _audio_conversion_target("bestaudio[ext=webm]/bestaudio", None) == "opus"
+
+
+def test_a_webm_request_on_a_video_download_is_untouched():
+    """Only audio-only specs get the opus treatment — a video download asking
+    for webm means the video container."""
+    assert _audio_conversion_target("bestvideo*[ext=webm]+bestaudio/best", None) is None
+
+
 def test_natively_available_formats_are_left_to_the_format_spec():
-    """m4a and opus are streams the site already serves — selecting one must
-    never re-encode it."""
-    for spec in ("bestaudio[ext=m4a]/bestaudio", "bestaudio[ext=webm]/bestaudio",
-                 "bestaudio/best"):
+    """m4a is a stream the site already serves in a usable container — selecting
+    it must never invoke ffmpeg."""
+    for spec in ("bestaudio[ext=m4a]/bestaudio", "bestaudio/best"):
         assert _audio_conversion_target(spec, None) is None
 
 
@@ -85,6 +106,17 @@ def test_flac_files_are_treated_as_audio():
     assert is_audio_path("/downloads/Mix/Radiohead - Creep.flac")
 
 
+def test_webm_is_not_audio_but_opus_is():
+    """The whole reason opus needs remuxing: `.webm` fails this check, so
+    _tag_audio_file() returns early and the file reaches Plex with no artist or
+    album on it. `.opus` passes."""
+    from app.ytdl.tagging import can_tag
+
+    assert not is_audio_path("/downloads/Mix/Radiohead - Creep.webm")
+    assert is_audio_path("/downloads/Mix/Radiohead - Creep.opus")
+    assert can_tag("/downloads/Mix/Radiohead - Creep.opus")
+
+
 # ── The options run_download actually hands yt-dlp ────────────────────────────
 
 class _FakeYDL:
@@ -125,6 +157,11 @@ def _run(monkeypatch, tmp_path, format_spec, settings=None):
 def test_run_download_adds_the_extract_audio_postprocessor(monkeypatch, tmp_path):
     opts = _run(monkeypatch, tmp_path, "bestaudio[ext=flac]/bestaudio/best")
     assert {"key": "FFmpegExtractAudio", "preferredcodec": "flac"} in opts["postprocessors"]
+
+
+def test_run_download_adds_the_opus_postprocessor(monkeypatch, tmp_path):
+    opts = _run(monkeypatch, tmp_path, "bestaudio[ext=opus]/bestaudio[ext=webm]/bestaudio")
+    assert {"key": "FFmpegExtractAudio", "preferredcodec": "opus"} in opts["postprocessors"]
 
 
 def test_run_download_leaves_other_audio_downloads_alone(monkeypatch, tmp_path):
