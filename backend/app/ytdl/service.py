@@ -466,14 +466,22 @@ def _write_audio_cover(path: str, info: dict) -> None:
 
 
 def _tag_audio_file(path: str, info: dict) -> None:
-    """Write music tags into a finished audio download.
+    """Write music tags — and this track's own artwork — into a finished audio
+    download.
+
+    The embedded image is **per track**: a playlist of different songs gets a
+    different picture in each file, which is what a player shows while it plays.
+    The folder's ``cover.jpg`` (see :func:`_write_audio_cover`) is the separate,
+    album-level image Plex uses for the grid.
 
     Best-effort: a container mutagen can't write leaves the file exactly as
-    yt-dlp produced it. Video downloads are skipped entirely.
+    yt-dlp produced it, and a missing thumbnail just means no picture. Video
+    downloads are skipped entirely.
     """
     import logging
 
     from app.utils import is_audio_path
+    from app.ytdl.artwork import fetch_cover_bytes
     from app.ytdl.tagging import TaggingError, can_tag, write_tags
     from app.ytdl.trackinfo import derive_tags
 
@@ -484,8 +492,16 @@ def _tag_audio_file(path: str, info: dict) -> None:
     if not tags:
         return
 
+    cover, mime = None, "image/jpeg"
     try:
-        write_tags(path, tags)
+        fetched = fetch_cover_bytes(info.get("thumbnail"))
+        if fetched:
+            cover, mime = fetched
+    except Exception as exc:  # noqa: BLE001 — art must never cost us the tags
+        logging.getLogger(__name__).warning("could not fetch track art: %s", exc)
+
+    try:
+        write_tags(path, tags, cover, mime)
     except TaggingError as exc:
         logging.getLogger(__name__).warning("could not tag %s: %s", path, exc)
 

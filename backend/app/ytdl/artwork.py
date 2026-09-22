@@ -232,3 +232,48 @@ def write_music_cover(
                 except OSError:
                     pass
         return dest
+
+
+def fetch_cover_bytes(thumbnail_url: str | None) -> tuple[bytes, str] | None:
+    """Fetch *thumbnail_url* as ``(image_bytes, mime)``, or None.
+
+    The bytes form, for embedding inside an audio file rather than writing a
+    sidecar. YouTube serves `.webp`, which most players won't render from a tag,
+    so it is converted to JPEG when ffmpeg is available; without ffmpeg the
+    original bytes are returned under their own mime so a player that *can*
+    read webp still gets something.
+    """
+    import urllib.error
+    import urllib.request
+
+    if not thumbnail_url:
+        return None
+
+    src_ext = os.path.splitext(thumbnail_url.split("?")[0])[1].lower() or ".jpg"
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, f"src{src_ext}")
+        try:
+            req = urllib.request.Request(thumbnail_url, headers={"User-Agent": "StreamSnap"})
+            with urllib.request.urlopen(req, timeout=20) as resp, open(src, "wb") as fh:
+                shutil.copyfileobj(resp, fh)
+        except (urllib.error.URLError, OSError) as exc:
+            logger.warning("artwork: cover fetch failed (%s): %s", thumbnail_url, exc)
+            return None
+
+        if src_ext in (".jpg", ".jpeg"):
+            return _read(src), "image/jpeg"
+        if src_ext == ".png":
+            return _read(src), "image/png"
+
+        jpg = os.path.join(tmp, "cover.jpg")
+        ffmpeg = _ffmpeg_bin()
+        if ffmpeg and _run_ffmpeg([ffmpeg, "-y", "-i", src, jpg]):
+            return _read(jpg), "image/jpeg"
+
+        logger.info("artwork: no ffmpeg to convert %s — embedding as-is", src_ext)
+        return _read(src), f"image/{src_ext.lstrip('.')}"
+
+
+def _read(path: str) -> bytes:
+    with open(path, "rb") as fh:
+        return fh.read()

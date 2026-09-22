@@ -971,39 +971,52 @@ Resulting tags:
   because of a tag.
 - **Re-tagging is idempotent.** Re-downloading over a tagged file replaces frames rather
   than stacking duplicates.
-- **Album art is a sidecar, written separately.** `service._write_audio_cover()` saves the
-  video thumbnail into the file's folder as `cover.jpg`, which is where Plex looks. Nothing
-  else provides it — the TMDB path (section 8) covers *show* folders and TMDB has no music
-  artists, and yt-dlp's *Embed Thumbnail* option is off by default, so without this the
-  music grid is grey boxes.
+- **Artwork is written at two levels, deliberately.** Media players use them for two
+  different things, so collapsing them into one loses whichever you didn't pick.
 
-  A sidecar rather than an embedded tag is what makes it format-independent: flac, m4a,
-  opus and mp3 are all served by the same file. Written **once per folder** (a forty-track
-  album fetches one image, not forty); `artwork.write_music_cover(..., overwrite=True)`
-  replaces one. YouTube serves `.webp`, which Plex won't read, so ffmpeg converts it —
-  without ffmpeg the image keeps its own extension rather than becoming a `.jpg` that
-  isn't one. Like the tagger it runs at the end of `run_download` and never raises.
+  | | Where | Scope | Drives |
+  |---|---|---|---|
+  | **Embedded** | inside each file | per track | the image shown while that song plays |
+  | **`cover.jpg`** | in the folder | per album | the album tile in Plex's grid |
 
-- **Embedded cover art is still not written here.** Use yt-dlp's own *Embed Thumbnail* option on the same
-  Settings tab.
+  **Per-track embedding** — `_tag_audio_file()` fetches *this track's* thumbnail via
+  `artwork.fetch_cover_bytes()` and hands the bytes to `tagging.write_tags()`, which puts
+  them in the container's own picture slot: `APIC` for mp3, the `covr` atom for m4a/mp4, a
+  base64 `METADATA_BLOCK_PICTURE` comment for opus/ogg, a picture block for flac.
+  Re-tagging **replaces** the picture rather than stacking a second one. A playlist of
+  different songs therefore gets a different image in every file — which a single shared
+  cover cannot do, and is the reason both exist.
+
+  **`cover.jpg`** — `_write_audio_cover()` writes a sidecar into the folder. Nothing else
+  provides album-level art: the TMDB path (section 8) covers *show* folders and TMDB has
+  no music artists, so without this the music grid is grey boxes. Written **once per
+  folder** (a forty-track album fetches one image, not forty);
+  `artwork.write_music_cover(..., overwrite=True)` replaces one.
+
+  Both share the fetch-and-convert path. YouTube serves `.webp`, which Plex won't read and
+  most players won't render from a tag, so ffmpeg converts it to JPEG — without ffmpeg the
+  bytes are used as-is rather than mislabelled. Like the tagger, both run at the end of
+  `run_download` and never raise.
 
 ### Security notes
 
 - **Tags** need no network access and no credentials — every value is derived from the
   download itself.
-- **Album art** is the one exception: it fetches the thumbnail URL from the download's own
-  `info_dict`. No credentials, and the URL comes from the site yt-dlp just talked to, not
-  from user input.
+- **Artwork** is the one exception: it fetches the thumbnail URL from the download's own
+  `info_dict` — **once per track** for the embedded picture, plus once per folder for the
+  sidecar. No credentials, and the URL comes from the site yt-dlp just talked to, not from
+  user input.
 - mutagen parses the file the app just wrote; a malformed file raises and is caught, so a
   corrupt download cannot crash the worker.
-- The cover is written into the folder the download already wrote to, under a fixed name —
-  it cannot be steered at a path outside it.
+- The sidecar is written into the folder the download already wrote to, under a fixed name
+  — it cannot be steered at a path outside it. The embedded picture goes into the
+  downloaded file itself and touches nothing else.
 
 ### Settings
 
 | Key | Default | Effect |
 |---|---|---|
-| `music_tags` | `true` | Tag audio downloads **and write `cover.jpg`**. Set to `false` to leave files exactly as yt-dlp wrote them. |
+| `music_tags` | `true` | Tag audio downloads, **embed each track's artwork**, and write the folder's `cover.jpg`. Set to `false` to leave files exactly as yt-dlp wrote them. |
 
 ---
 
