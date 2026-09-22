@@ -393,11 +393,15 @@ To enable artwork fetching from **The Movie Database (TMDB)**:
 Pick **flac** in the Format dropdown (or the *Audio FLAC* preset, or Settings → Format →
 Audio Codec) and you get a `.flac` file.
 
-FLAC works differently from the other audio formats. `m4a` and `opus` are *selected* — the
-format spec matches a stream the site already serves. No major site serves FLAC, so it is
-produced by converting with ffmpeg instead. StreamSnap still asks for a lossless source
-first, so on a site that does serve FLAC (Bandcamp) the file is used directly and only
-remuxed, never re-encoded.
+FLAC works differently from `m4a`, which is *selected* — the format spec matches a stream
+the site already serves. No major site serves FLAC, so it is produced by converting with
+ffmpeg instead. StreamSnap still asks for a lossless source first, so on a site that does
+serve FLAC (Bandcamp) the file is used directly and only remuxed, never re-encoded.
+
+**opus also goes through ffmpeg, but only to change container.** YouTube serves Opus
+inside a webm file, and a `.webm` is something Plex won't scan into a music library and
+that StreamSnap's own tagger skips. The audio stream is copied — not re-encoded — into a
+proper `.opus` file, so there is no quality cost.
 
 > **From YouTube, FLAC is not a quality upgrade.** YouTube's audio streams are Opus or AAC,
 > both lossy. Converting them to FLAC losslessly compresses audio that is already lossy —
