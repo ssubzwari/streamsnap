@@ -8,10 +8,10 @@ version = "0.1.0"
 requires-python = ">=3.11"
 license = "AGPL-3.0-or-later"
 dependencies = [
-  "fastapi>=0.141.1",
-  "uvicorn[standard]>=0.53.0",
+  "fastapi>=0.142.2",
+  "uvicorn[standard]>=0.54.0",
   "python-socketio>=5.17.0",
-  "sqlalchemy[asyncio]>=2.0.54",
+  "sqlalchemy[asyncio]>=2.1.1",
   "aiosqlite>=0.22.1",
   "yt-dlp>=2026.8.19",
   "pydantic>=2.13.5",
