@@ -20,6 +20,9 @@ from app.config import settings
 from app.db import init_db
 from app.routes import (
     downloads,
+    files,
+    library,
+    media,
     metadata,
     notifications,
     settings as settings_route,
@@ -93,6 +96,9 @@ app.add_middleware(
 
 app.include_router(metadata.router)
 app.include_router(downloads.router)
+app.include_router(files.router)
+app.include_router(media.router)
+app.include_router(library.router)
 app.include_router(subscriptions.router)
 app.include_router(notifications.router)
 app.include_router(settings_route.router)
@@ -112,10 +118,12 @@ if _DIST.exists():
     # Serve /assets, /vite.svg, etc. as static files
     app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="frontend-assets")
 
-    # SPA catch-all: any path that didn't match an API route → index.html
+    # SPA catch-all: any path that didn't match an API route → index.html.
+    # index.html is the only unhashed entry point, so it must always revalidate;
+    # otherwise browsers (Chrome especially) keep showing the previous build.
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str) -> FileResponse:
-        return FileResponse(_DIST / "index.html")
+        return FileResponse(_DIST / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 # socketio wraps the FastAPI ASGI app — uvicorn serves socket_app

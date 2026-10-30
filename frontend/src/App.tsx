@@ -1,8 +1,11 @@
 import { useState, useCallback } from "react";
 
 import Dashboard from "@/pages/Dashboard";
+import MediaManager from "@/pages/MediaManager";
 import Settings from "@/pages/Settings";
 import Footer from "@/components/Footer";
+import { PlayerProvider } from "@/player/PlayerContext";
+import PlayerWindow, { PlayerNavButton } from "@/player/PlayerWindow";
 import ToastContainer from "@/components/Toast";
 import Background from "@/theme/Background";
 import { ThemeProvider } from "@/theme/ThemeContext";
@@ -39,7 +42,25 @@ const GearIcon = () => (
   </svg>
 );
 
+type View = "dashboard" | "media";
+
+const VIEWS: { key: View; label: string }[] = [
+  { key: "dashboard", label: "Dashboard" },
+  { key: "media", label: "Media Manager" },
+];
+
+function PopoutPlayer() {
+  return (
+    <ThemeProvider>
+      <PlayerProvider>
+        <PlayerWindow forceOpen />
+      </PlayerProvider>
+    </ThemeProvider>
+  );
+}
+
 export default function App() {
+  const [view, setView] = useState<View>("dashboard");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeCount, setActiveCount] = useState(0);
   const [speed, setSpeed] = useState({ value: 0, unit: "MB/s" });
@@ -47,9 +68,12 @@ export default function App() {
   const handleActiveCount = useCallback((count: number) => setActiveCount(count), []);
   const handleSpeedReport = useCallback((value: number, unit: string) => setSpeed({ value, unit }), []);
 
+  if (new URLSearchParams(window.location.search).get("player") === "1") return <PopoutPlayer />;
+
   return (
     <ThemeProvider>
       <UiPrefsProvider>
+      <PlayerProvider>
       <Background paused={settingsOpen} />
       <div className={styles.shell}>
         <nav className={styles.topNav}>
@@ -58,6 +82,17 @@ export default function App() {
             <span>Stream<span className={styles.brandAccent}>Snap</span></span>
           </span>
 
+          <div className={styles.tabs}>
+            {VIEWS.map((v) => (
+              <button
+                key={v.key}
+                className={`${styles.tab} ${view === v.key ? styles.tabActive : ""}`}
+                onClick={() => setView(v.key)}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
 
           <div className={styles.navRight}>
             {activeCount > 0 && (
@@ -70,6 +105,7 @@ export default function App() {
                 )}
               </>
             )}
+            <PlayerNavButton className={styles.settingsBtn} />
             <button
               className={styles.settingsBtn}
               onClick={() => setSettingsOpen(true)}
@@ -80,16 +116,22 @@ export default function App() {
           </div>
         </nav>
 
-        <Dashboard
-          settingsOpen={settingsOpen}
-          onCloseSettings={() => setSettingsOpen(false)}
-          activeDownloadCount={handleActiveCount}
-          totalSpeedReport={handleSpeedReport}
-        />
+        {view === "media" ? (
+          <MediaManager />
+        ) : (
+          <Dashboard
+            settingsOpen={settingsOpen}
+            onCloseSettings={() => setSettingsOpen(false)}
+            activeDownloadCount={handleActiveCount}
+            totalSpeedReport={handleSpeedReport}
+          />
+        )}
         <Footer />
       </div>
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      <PlayerWindow />
       <ToastContainer />
+      </PlayerProvider>
       </UiPrefsProvider>
     </ThemeProvider>
   );

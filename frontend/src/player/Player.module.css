@@ -1,0 +1,691 @@
+/* Every colour comes from the app theme tokens (styles/tokens.css), so the
+   player follows dark / light mode like the rest of the app. */
+
+.window {
+  position: fixed;
+  z-index: 950;
+  max-height: calc(100vh - 16px);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(var(--color-surface-hi), var(--color-surface));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop), var(--edge-hi);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.ampWindow {
+  width: 350px;
+}
+
+.videoWindow {
+  max-width: calc(100vw - 16px);
+}
+
+.titleBtnActive {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.resizeGrip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: linear-gradient(135deg, transparent 50%, var(--color-border) 50%);
+  border-bottom-right-radius: var(--radius-md);
+}
+
+.titleBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  background: var(--color-surface-hi);
+  border-bottom: 1px solid var(--color-border);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.titleText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.titleButtons {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.titleBtn {
+  min-width: 22px;
+  height: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.titleBtn:hover,
+.tBtn:hover:not(:disabled),
+.rowBtn:hover:not(:disabled),
+.viewBtn:hover {
+  border-color: var(--color-accent);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.hiddenSlot {
+  display: none;
+}
+
+/* LCD: glowing monospace readout on the app background colour. */
+.lcd {
+  padding: 6px 8px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-family: "Consolas", "Courier New", monospace;
+  color: var(--color-accent);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--color-accent) 50%, transparent);
+}
+
+.lcdTitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+
+.lcdRow {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.lcdTime {
+  font-size: 15px;
+  letter-spacing: 0.05em;
+}
+
+.lcdState {
+  opacity: 0.8;
+}
+
+.vizWrap {
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.viz {
+  display: block;
+  width: 100%;
+  height: 70px;
+}
+
+.transport {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.tBtn {
+  min-width: 34px;
+  height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: linear-gradient(var(--color-surface), var(--color-surface-hi));
+  color: var(--color-text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.tBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tBtnOn {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  width: 110px;
+}
+
+.volume input,
+.videoVolume input {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+.seek {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+.eqHead,
+.listHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.preset {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 1px 4px;
+}
+
+.eq {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  padding: 6px 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  color: var(--color-text-muted);
+}
+
+.bandDb {
+  height: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Vertical slider: a horizontal range input rotated, in a box of the visual size. */
+.slideWrap {
+  position: relative;
+  width: 18px;
+  height: 90px;
+}
+
+.slider {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 90px;
+  height: 18px;
+  margin: 0;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  accent-color: var(--color-accent);
+}
+
+.bandLabel {
+  height: 12px;
+}
+
+/* ── Playlist ── */
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 160px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.listTall {
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  user-select: none;
+}
+
+.row:hover {
+  background: var(--color-surface-hi);
+}
+
+.rowActive {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.rowSelected {
+  background: color-mix(in srgb, var(--color-accent) 24%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.listItem {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+  padding: 4px 6px;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.folderRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  background: var(--color-surface-hi);
+  border-bottom: 1px solid var(--color-border);
+  user-select: none;
+}
+
+.folderToggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+  padding: 4px 6px;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.folderCount {
+  flex-shrink: 0;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.rowInFolder {
+  padding-left: 10px;
+}
+
+.listNum {
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.listTitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowBtn,
+.viewBtn {
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.rowBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.viewBtn {
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.linkBtn {
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.linkBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.listHeadBtns {
+  display: flex;
+  gap: 10px;
+}
+
+/* ── Video window ── */
+.screen {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.slot {
+  width: 100%;
+  height: 100%;
+}
+
+.slot video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.screenNote {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-muted);
+}
+
+.videoControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.videoSeek {
+  flex: 1;
+  min-width: 80px;
+  accent-color: var(--color-accent);
+}
+
+.videoTime {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.videoVolume {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 90px;
+}
+
+/* ── Full-screen overlay ── */
+.full {
+  position: fixed;
+  inset: 0;
+  z-index: 990;
+  display: flex;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+.fullMain {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.fullTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modeBar {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.modeBtn {
+  padding: 5px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.modeBtnOn {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.fullStage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.fullCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.fullNote {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--color-text-muted);
+}
+
+.fullControls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.fullSide {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 360px;
+  padding: 16px;
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+/* ── Add files dialog ── */
+.addBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.addTabs {
+  display: flex;
+  gap: 4px;
+}
+
+.addTab {
+  padding: 4px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface-hi);
+  color: var(--color-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addTabActive {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.addToolbar {
+  display: flex;
+  gap: 6px;
+}
+
+.addInput {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.addBtn {
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface-hi);
+  color: var(--color-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.addCrumbs {
+  color: var(--color-text-muted);
+}
+
+.addList {
+  height: 280px;
+  overflow-y: auto;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.addRow {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addRow:hover {
+  background: var(--color-surface-hi);
+}
+
+.addRowGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+}
+
+.addRowGroup .addRow {
+  flex: 1;
+  min-width: 0;
+}
+
+.addChoiceBtn {
+  flex-shrink: 0;
+  padding: 3px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: none;
+  color: var(--color-text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.addChoiceBtn:hover {
+  background: var(--color-surface-hi);
+}
+
+.addRowName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.addEmpty {
+  padding: 12px;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.addStatus {
+  min-height: 16px;
+  color: var(--color-accent);
+}

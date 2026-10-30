@@ -1,8 +1,12 @@
 import type { DownloadInfo } from "@/ws/events";
+import { trackKind } from "@/player/PlayerContext";
 import styles from "./MediaCard.module.css";
 
 interface MediaCardProps {
   download: DownloadInfo;
+  onPlay: () => void;
+  onPlayVideo?: () => void;
+  onPlayMusic?: () => void;
 }
 
 // Lowercase aliases preserved for any data carried over from the older
@@ -17,21 +21,14 @@ function extractYear(isoDate: string): string {
   return new Date(isoDate).getFullYear().toString();
 }
 
-export default function MediaCard({ download: d }: MediaCardProps) {
-  // Stream the file inline in a new tab — the same affordance the Completed
-  // table uses. The previous behavior (openDownload) hit /open which only
-  // works on a host file manager and 501s on remote backends.
-  const handleOpen = () => {
-    window.open(`/api/downloads/${d.id}/stream`, "_blank");
-  };
-
+export default function MediaCard({ download: d, onPlay, onPlayVideo, onPlayMusic }: MediaCardProps) {
   return (
     <div
       className={styles.card}
-      onClick={handleOpen}
+      onClick={onPlay}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && handleOpen()}
+      onKeyDown={(e) => e.key === "Enter" && onPlay()}
     >
       <div className={styles.poster}>
         {d.thumbnail ? (
@@ -71,6 +68,35 @@ export default function MediaCard({ download: d }: MediaCardProps) {
         </span>
         <span className={styles.year}>{extractYear(d.created_at)}</span>
       </div>
+
+      {trackKind(d) === "video" && onPlayVideo && onPlayMusic && (
+        <div className={styles.choices}>
+          <button
+            type="button"
+            className={styles.choiceBtn}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPlayVideo();
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            title="Play in the video window"
+          >
+            ▶ Video
+          </button>
+          <button
+            type="button"
+            className={styles.choiceBtn}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPlayMusic();
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            title="Play the audio in the AMP"
+          >
+            ♫ Music
+          </button>
+        </div>
+      )}
     </div>
   );
 }

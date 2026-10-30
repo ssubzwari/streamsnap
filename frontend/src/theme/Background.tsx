@@ -22,17 +22,27 @@ type VantaFactory = (opts: Record<string, unknown>) => { destroy: () => void };
 
 const loadThree = () => import("three").then((m) => (m as { default?: unknown }).default ?? m);
 
+// Vanta's UMD builds export {default: factory}, and the bundler can wrap that
+// once more. Unwrap until we reach the function, or the effect silently fails.
+const vantaFactory = (m: { default?: unknown }): VantaFactory => {
+  let f: unknown = m.default;
+  while (typeof f !== "function" && f && typeof f === "object" && "default" in f) {
+    f = (f as { default?: unknown }).default;
+  }
+  return f as VantaFactory;
+};
+
 const VANTA_LOADERS: Record<VantaEffectId, () => Promise<VantaFactory>> = {
   // @ts-expect-error vanta has no types
-  net: () => import("vanta/dist/vanta.net.min").then((m) => m.default),
+  net: () => import("vanta/dist/vanta.net.min").then(vantaFactory),
   // @ts-expect-error vanta has no types
-  waves: () => import("vanta/dist/vanta.waves.min").then((m) => m.default),
+  waves: () => import("vanta/dist/vanta.waves.min").then(vantaFactory),
   // @ts-expect-error vanta has no types
-  cells: () => import("vanta/dist/vanta.cells.min").then((m) => m.default),
+  cells: () => import("vanta/dist/vanta.cells.min").then(vantaFactory),
   // @ts-expect-error vanta has no types
-  dots: () => import("vanta/dist/vanta.dots.min").then((m) => m.default),
+  dots: () => import("vanta/dist/vanta.dots.min").then(vantaFactory),
   // @ts-expect-error vanta has no types
-  rings: () => import("vanta/dist/vanta.rings.min").then((m) => m.default),
+  rings: () => import("vanta/dist/vanta.rings.min").then(vantaFactory),
 };
 
 function vantaOptions(id: VantaEffectId, mode: ThemeMode, THREE: unknown) {
@@ -155,7 +165,13 @@ export default function Background({ paused = false }: BackgroundProps) {
 
     return () => {
       disposed = true;
-      vantaInstance?.destroy();
+      try {
+        vantaInstance?.destroy();
+      } catch {
+        // Some Vanta builds (dots) throw when their canvas is already detached.
+        // An error during effect cleanup would unmount the whole app, so the
+        // teardown below still runs and the error is ignored.
+      }
       // Vanta leaves its <canvas> behind on .destroy() in some versions —
       // strip any extra children so the next effect mounts cleanly.
       hostRef.current

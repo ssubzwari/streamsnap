@@ -18,6 +18,7 @@ from app.config import settings
 from app.db import SCHEMA_VERSION, engine, get_session
 from app.models import Download, Notification, NotificationChannel, SeenVideo, Setting, Subscription
 from app.schemas import SettingsMap
+from app.services.storage import set_default_folder_value, validate_media_folders
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -98,6 +99,7 @@ ALLOWED_KEYS = {
     "subscription_check_interval_minutes",
     "auto_start",
     "download_folder",
+    "media_folders",
     "items_limit",
     "option_presets",
     # Format
@@ -176,6 +178,10 @@ async def update_settings(
     for key, value in body.settings.items():
         if key not in ALLOWED_KEYS:
             continue
+        if key == "download_folder" and value is not None:
+            value = set_default_folder_value(value)
+        if key == "media_folders":
+            value = validate_media_folders(value)
         setting = await session.get(Setting, key)
         if setting is None:
             setting = Setting(key=key, value=value)

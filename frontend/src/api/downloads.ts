@@ -10,6 +10,8 @@ export interface CreateDownloadRequest {
   category?: string | null;
   subcategory?: string | null;
   tag?: string | null;
+  /** Root-relative folder; omit for the default download folder. */
+  output_folder?: string | null;
 }
 
 export interface CategoryTree {
@@ -113,6 +115,7 @@ export async function downloadPlaylist(
     category?: string | null;
     subcategory?: string | null;
     tag?: string | null;
+    output_folder?: string | null;
   },
 ): Promise<DownloadInfo[]> {
   return apiFetch<DownloadInfo[]>("/downloads/playlist", {

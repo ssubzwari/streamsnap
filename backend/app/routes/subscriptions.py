@@ -1,4 +1,5 @@
 import asyncio
+import os
 import pathlib
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -10,6 +11,13 @@ from app.db import get_session
 from app.models import SeenVideo, Subscription
 from app.schemas import SubscriptionCreate, SubscriptionInfo, SubscriptionUpdate
 from app.services.artwork_settings import artwork_enabled, tmdb_config
+from app.services.storage import (
+    active_download_under,
+    destination_base,
+    is_inside,
+    move_entry,
+    root_dir,
+)
 from app.services.subscription_worker import schedule_subscription, unschedule_subscription
 from app.utils import (
     category_subdir,
@@ -100,12 +108,12 @@ async def create_subscription(
 
     # Create per-playlist download folder, prefixed with the user's category
     # path when one was provided.
-    folder_name = safe_folder_name(playlist_data["title"])
-    rel = category_subdir(req.category, req.subcategory, req.tag)
-    if rel:
-        download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel / folder_name)
-    else:
-        download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
+    base = await destination_base(
+        session,
+        req.download_folder,
+        category_subdir(req.category, req.subcategory, req.tag),
+    )
+    download_dir = os.path.join(base, safe_folder_name(playlist_data["title"]))
     pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
 
     # Pick best format spec: merge when ffmpeg available, single-stream fallback otherwise
@@ -222,6 +230,35 @@ async def get_subscription(
     return SubscriptionInfo.model_validate(sub)
 
 
+async def _move_subscription_folder(session: AsyncSession, sub: Subscription, folder_rel: str) -> None:
+    """Move the subscription's playlist folder (with its files) into another
+    folder, keeping the folder's own name. Library rows follow the move."""
+    base = await destination_base(session, folder_rel)
+    old = subscription_download_dir(sub, root_dir())
+    new = os.path.join(base, os.path.basename(old))
+    if os.path.abspath(new) == os.path.abspath(old):
+        return
+    if is_inside(base, old):
+        raise HTTPException(status_code=400, detail="Can't move a subscription into its own folder")
+    if os.path.lexists(new):
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{os.path.basename(old)}' already exists in that folder",
+        )
+    if os.path.isdir(old):
+        if await active_download_under(session, old):
+            raise HTTPException(
+                status_code=409,
+                detail="Downloads are running in this subscription's folder. Try again when they finish.",
+            )
+        await move_entry(session, old, new)
+    else:
+        pathlib.Path(new).mkdir(parents=True, exist_ok=True)
+    sub.download_dir = new
+    await session.commit()
+    await session.refresh(sub)
+
+
 @router.patch("/{sub_id}", response_model=SubscriptionInfo)
 async def update_subscription(
     sub_id: int,
@@ -260,6 +297,9 @@ async def update_subscription(
 
     await session.commit()
     await session.refresh(sub)
+
+    if req.download_folder is not None:
+        await _move_subscription_folder(session, sub, req.download_folder)
 
     # Re-register job with updated settings
     await schedule_subscription(sub)
@@ -321,7 +361,7 @@ async def regenerate_artwork(
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
-    folder = subscription_download_dir(sub, settings.DOWNLOAD_DIR)
+    folder = subscription_download_dir(sub, root_dir())
     pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
 
     # Prefer a recorded seen video (stable "first" over time); fall back to a

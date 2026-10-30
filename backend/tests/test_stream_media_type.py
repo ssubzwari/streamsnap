@@ -35,7 +35,8 @@ def test_video_download_keeps_video_type():
 
 def test_video_download_mkv():
     got = _stream_media_type(_dl("vp9"), "/x/Clip.mkv")
-    assert got in ("video/x-matroska", "video/mkv", "application/octet-stream")
+    # Newer mimetypes databases map .mkv to "video/matroska"; both spellings are valid.
+    assert got in ("video/x-matroska", "video/matroska", "video/mkv", "application/octet-stream")
 
 
 def test_no_codec_recorded_but_audio_extension_served_as_audio():

@@ -1,5 +1,6 @@
 import asyncio
 import mimetypes
+import os
 import pathlib
 import time
 import uuid
@@ -16,6 +17,7 @@ from app.models import Download, SeenVideo, Subscription
 from app.schemas import DownloadCreateRequest, DownloadInfo, MetadataResolveRequest, PlaylistEntry
 from app.services.download_manager import download_manager
 from app.services.notifications import create_notification
+from app.services.storage import destination_base
 from app.utils import (
     AUDIO_EXTS,
     category_subdir,
@@ -52,35 +54,25 @@ async def create_download(
     )
     subscription = sub_row.scalars().first()
 
-    # Resolve the destination folder. If subscribed, use subscription's settings;
-    # otherwise use provided category/subcategory/tag.
-    rel = None  # Track whether we're using a categorized path (for enqueue)
-    if subscription:
-        # Use subscription's folder and format (unless explicitly overridden)
-        if subscription.download_dir:
-            download_dir = subscription.download_dir
-        else:
-            # Subscription doesn't have a custom dir, use its category structure
-            rel = category_subdir(subscription.category, subscription.subcategory, subscription.tag)
-            if rel:
-                download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel)
-                pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
-            else:
-                download_dir = settings.DOWNLOAD_DIR
+    # Destination precedence: an explicit folder picked in the UI, then the
+    # subscription's folder, then category folders under the default folder.
+    # Subscription settings (format, category) still apply when subscribed.
+    if subscription and subscription.download_dir and not req.output_folder:
+        download_dir = subscription.download_dir
+    else:
+        source = subscription or req
+        download_dir = await destination_base(
+            session,
+            req.output_folder,
+            category_subdir(source.category, source.subcategory, source.tag),
+        )
 
-        # Use subscription's format if not overridden in request
+    if subscription:
         format_spec = req.format_spec or subscription.format_spec or "bestvideo*+bestaudio/best"
         category = subscription.category
         subcategory = subscription.subcategory
         tag = subscription.tag
     else:
-        # Manual download without subscription
-        rel = category_subdir(req.category, req.subcategory, req.tag)
-        if rel:
-            download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel)
-            pathlib.Path(download_dir).mkdir(parents=True, exist_ok=True)
-        else:
-            download_dir = settings.DOWNLOAD_DIR
         format_spec = req.format_spec
         category = req.category
         subcategory = req.subcategory
@@ -134,6 +126,8 @@ async def create_download(
 class PlaylistDownloadRequest(BaseModel):
     url: str
     format_spec: str = "bestvideo*+bestaudio/best"
+    # Root-relative folder picked in the UI. None/"" = default folder.
+    output_folder: str | None = None
     # When provided, only entries whose URL is in this list are downloaded.
     # Lets the UI show the full playlist and let the user drop videos first.
     urls: list[str] | None = None
@@ -287,31 +281,25 @@ async def download_playlist(
         deduped.append(entry)
     playlist_data["entries"] = deduped
 
-    # Determine destination folder and metadata
+    # Determine destination folder and metadata (same precedence as single downloads).
+    folder_name = safe_folder_name(playlist_data["title"])
+    if subscription and subscription.download_dir and not req.output_folder:
+        download_dir = subscription.download_dir
+    else:
+        source = subscription or req
+        base = await destination_base(
+            session,
+            req.output_folder,
+            category_subdir(source.category, source.subcategory, source.tag),
+        )
+        download_dir = os.path.join(base, folder_name)
+
     if subscription:
-        # Use subscription's folder and settings
-        if subscription.download_dir:
-            download_dir = subscription.download_dir
-        else:
-            # Subscription doesn't have a custom dir; use its category structure
-            rel = category_subdir(subscription.category, subscription.subcategory, subscription.tag)
-            if rel:
-                folder_name = safe_folder_name(playlist_data["title"])
-                download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel / folder_name)
-            else:
-                download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / safe_folder_name(playlist_data["title"]))
         format_spec = req.format_spec or subscription.format_spec or "bestvideo*+bestaudio/best"
         category = subscription.category
         subcategory = subscription.subcategory
         tag = subscription.tag
     else:
-        # Manual playlist download without subscription
-        folder_name = safe_folder_name(playlist_data["title"])
-        rel = category_subdir(req.category, req.subcategory, req.tag)
-        if rel:
-            download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / rel / folder_name)
-        else:
-            download_dir = str(pathlib.Path(settings.DOWNLOAD_DIR) / folder_name)
         format_spec = req.format_spec
         category = req.category
         subcategory = req.subcategory

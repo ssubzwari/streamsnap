@@ -127,3 +127,29 @@
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Explicit play choice (always visible so touch screens can use it) ── */
+
+.choices {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.choiceBtn {
+  flex: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.choiceBtn:hover,
+.choiceBtn:focus-visible {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  outline: none;
+}

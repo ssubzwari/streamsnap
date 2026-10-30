@@ -16,6 +16,8 @@ export interface SubscriptionCreate {
   category?: string | null;
   subcategory?: string | null;
   tag?: string | null;
+  /** Root-relative folder the playlist folder is created in; omit for the default folder. */
+  download_folder?: string | null;
   /** Pin TMDB artwork to a specific title instead of matching on the playlist title. */
   tmdb_id?: number | null;
   tmdb_type?: "tv" | "movie" | null;
@@ -23,6 +25,8 @@ export interface SubscriptionCreate {
 
 export interface SubscriptionUpdate {
   check_interval_minutes?: number;
+  /** Moves the subscription's folder (and its files) into this root-relative folder. */
+  download_folder?: string;
   format_spec?: string;
   is_active?: boolean;
   notify?: boolean;

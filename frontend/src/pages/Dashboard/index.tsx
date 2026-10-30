@@ -2,6 +2,10 @@ import { useEffect, useReducer, useState } from "react";
 
 import { SkeletonRow } from "@/components/Skeleton";
 import StatsMeter from "@/components/StatsMeter";
+import FolderPicker, { Dialog, FolderBrowser } from "@/components/FolderPicker";
+import { openDownload } from "@/player/openMedia";
+import { addedNote, useFlashNote } from "@/player/useFlashNote";
+import { isMediaFile, streamTrack, trackKind, usePlayer, type TrackView } from "@/player/PlayerContext";
 import { useUiPrefs, type SectionId } from "@/ui/UiPrefsContext";
 import {
   createDownload,
@@ -20,6 +24,7 @@ import {
 } from "@/api/downloads";
 import { resolveMetadata } from "@/api/metadata";
 import { getSettings, updateSettings } from "@/api/settings";
+import { bulkDeleteDownloads, bulkMoveDownloads, importFiles, rescanLibrary, type RescanReport } from "@/api/library";
 import {
   checkSubscription,
   createSubscription,
@@ -80,6 +85,12 @@ const CopyIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+const FolderIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
   </svg>
 );
 
@@ -383,18 +394,13 @@ function qualityLabel(d: DownloadInfo): string {
   return "\u2014";
 }
 
-const AUDIO_EXTS = new Set([
-  "m4a", "m4b", "mp3", "opus", "ogg", "oga", "aac", "flac", "wav", "weba", "mka",
-]);
-
 /** "Audio" vs "Video" for the Type column. Prefer yt-dlp's codec, but fall
  *  back to the file extension / requested format so rows that were skipped
  *  (file already on disk) or came back without codec info still label right. */
 function isAudioDownload(d: DownloadInfo): boolean {
+  if (isMediaFile(d.output_path ?? "") || isMediaFile(`.${d.ext ?? ""}`)) return trackKind(d) === "audio";
   if (d.vcodec === "none") return true;
   if (d.vcodec) return false;
-  const ext = (d.ext || d.output_path?.split(".").pop() || "").toLowerCase();
-  if (ext && AUDIO_EXTS.has(ext)) return true;
   const fs = (d.format_spec || "").toLowerCase().replace(/\s/g, "");
   if (fs && !fs.includes("bestvideo") && !fs.includes("+") && fs.includes("bestaudio")) return true;
   return false;
@@ -494,7 +500,13 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
 
   // ── Advanced options state ────────────────────────────────────────────────
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [downloadFolder, setDownloadFolder] = useState("Default");
+  const [downloadFolder, setDownloadFolder] = useState("");
+  // Folder for the next download/subscription added from the URL row. "" = default folder.
+  const [outputFolder, setOutputFolder] = useState("");
+  // Subscription whose folder is being moved (edit modal), and its state.
+  const [folderSub, setFolderSub] = useState<SubscriptionInfo | null>(null);
+  const [folderBusy, setFolderBusy] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
   const [subCheckInterval, setSubCheckInterval] = useState("1"); // days
   const [optionPresets, setOptionPresets] = useState("");
 
@@ -504,6 +516,17 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   // ── Selection state ───────────────────────────────────────────────────────
   const [selectedActive, setSelectedActive] = useState<Set<number>>(new Set());
   const [selectedCompleted, setSelectedCompleted] = useState<Set<number>>(new Set());
+  // Last row checked in the Completed list — Shift+click selects from here.
+  const [completedAnchor, setCompletedAnchor] = useState<number | null>(null);
+  const [libraryDialog, setLibraryDialog] = useState<
+    | { kind: "move" | "delete"; ids: number[] }
+    | { kind: "rescan"; report: RescanReport }
+    | null
+  >(null);
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const player = usePlayer();
+  const [playlistNote, flashPlaylistNote] = useFlashNote();
+  const [libraryMsg, setLibraryMsg] = useState<string | null>(null);
   const [selectedSubs, setSelectedSubs] = useState<Set<number>>(new Set());
 
   // ── Sort state for completed ──────────────────────────────────────────────
@@ -790,6 +813,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         title: meta.title,
         thumbnail: meta.thumbnail ?? undefined,
         duration: meta.duration ?? undefined,
+        output_folder: outputFolder || undefined,
       });
       setUrl("");
     } catch (err) {
@@ -843,6 +867,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       check_interval_minutes: daysToMinutes(subCheckInterval),
       format_spec: buildFormatSpec(type, quality, format, codec),
       notify: subNotify,
+      download_folder: outputFolder || undefined,
     };
 
     try {
@@ -943,6 +968,121 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       await handleDelete(id);
     }
   };
+
+  // Row ids in the order the Completed list draws them (open groups only), so
+  // Shift+click can select a range that matches what the user sees.
+  const getVisibleCompletedIds = (): number[] => [
+    ...Array.from(groupedCompleted.subGroups.entries()).flatMap(([subId, dls]) =>
+      isSubGroupOpen(subId) ? dls.map((d) => d.id) : [],
+    ),
+    ...(isSubGroupOpen(0) ? groupedCompleted.manualDownloads.map((d) => d.id) : []),
+  ];
+
+  const handleCompletedCheck = (e: React.ChangeEvent<HTMLInputElement>, id: number) => {
+    const shift = (e.nativeEvent as MouseEvent).shiftKey;
+    if (shift && completedAnchor !== null) {
+      const ids = getVisibleCompletedIds();
+      const a = ids.indexOf(completedAnchor);
+      const b = ids.indexOf(id);
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        setSelectedCompleted((prev) => {
+          const next = new Set(prev);
+          for (const x of ids.slice(lo, hi + 1)) next.add(x);
+          return next;
+        });
+        setCompletedAnchor(id);
+        return;
+      }
+    }
+    toggleSelection(setSelectedCompleted, id);
+    setCompletedAnchor(id);
+  };
+
+  // ── Player: queue finished files from the Completed list ──
+  const playableRows = (ids: number[]): DownloadInfo[] =>
+    ids
+      .map((id) => completedDownloads.find((d) => d.id === id))
+      .filter((d): d is DownloadInfo => Boolean(d && d.output_path));
+
+  const playFromList = (id: number, view: TrackView = "auto") => {
+    const clicked = playableRows([id])[0];
+    if (clicked) openDownload(player, clicked, view);
+  };
+
+  const addToPlaylist = (rows: DownloadInfo[]) => {
+    if (rows.length === 0) return;
+    player.addTracks(rows.map(streamTrack));
+    flashPlaylistNote(addedNote(rows.length));
+  };
+
+  const addSelected = () =>
+    addToPlaylist(playableRows(getVisibleCompletedIds().filter((id) => selectedCompleted.has(id))));
+
+  const playSelected = () => {
+    const rows = playableRows(getVisibleCompletedIds().filter((id) => selectedCompleted.has(id)));
+    if (rows.length > 0) player.playList(rows.map(streamTrack), 0);
+  };
+
+  const refreshDownloads = () =>
+    listDownloads()
+      .then((d) => dispatchDownloads({ type: "SET", downloads: d }))
+      .catch(console.error);
+
+  const runLibraryAction = async (action: () => Promise<string>) => {
+    setLibraryBusy(true);
+    setLibraryMsg(null);
+    try {
+      setLibraryMsg(await action());
+    } catch (e) {
+      setLibraryMsg(String(e));
+    } finally {
+      setLibraryBusy(false);
+      setSelectedCompleted(new Set());
+      await refreshDownloads();
+    }
+  };
+
+  const summarizeLibrary = (
+    results: { id: number; ok: boolean; error: string | null }[],
+    verb: string,
+  ): string => {
+    const ok = results.filter((r) => r.ok).length;
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length === 0) return `${verb} ${ok} item${ok === 1 ? "" : "s"}.`;
+    const reasons = Array.from(new Set(failed.map((r) => r.error ?? "failed"))).join("; ");
+    return `${verb} ${ok}. Skipped ${failed.length}: ${reasons}`;
+  };
+
+  const runBulkMove = (ids: number[], folder: string) =>
+    runLibraryAction(async () =>
+      summarizeLibrary(await bulkMoveDownloads(ids, folder), "Moved"),
+    );
+
+  const runBulkDelete = (ids: number[], deleteFiles: boolean) =>
+    runLibraryAction(async () =>
+      summarizeLibrary(await bulkDeleteDownloads(ids, deleteFiles), deleteFiles ? "Deleted" : "Removed"),
+    );
+
+  const runRescan = async () => {
+    setLibraryBusy(true);
+    setLibraryMsg(null);
+    try {
+      const report = await rescanLibrary();
+      setLibraryDialog({ kind: "rescan", report });
+    } catch (e) {
+      setLibraryMsg(String(e));
+    } finally {
+      setLibraryBusy(false);
+    }
+  };
+
+  const runImport = (paths: string[]) =>
+    runLibraryAction(async () => {
+      const res = await importFiles(paths);
+      setLibraryDialog(null);
+      return `Added ${res.created.length} file${res.created.length === 1 ? "" : "s"} to the library.`;
+    });
 
   // If any rows in `candidates` are checked, act on just those; otherwise
   // act on the whole set ("nothing selected → do everything").
@@ -1046,6 +1186,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
           url: line,
           format_spec: formatSpec,
           title: meta.title,
+          output_folder: outputFolder || undefined,
         });
       } catch (e) {
         console.error("Import failed for", line, e);
@@ -1074,6 +1215,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         await downloadPlaylist(playlistReview.sourceUrl, formatSpec, {
           title: playlistReview.title,
           entries: playlistReview.entries,
+          output_folder: outputFolder || undefined,
         });
       } else {
         const sub = await createSubscription({
@@ -1163,6 +1305,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       check_interval_minutes: daysToMinutes(subInterval),
       format_spec: subFormat,
       notify: subNotify,
+      download_folder: outputFolder || undefined,
     };
 
     try {
@@ -1200,6 +1343,26 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     } finally {
       setSubSubmitting(false);
       setPlaylistLoading(false);
+    }
+  };
+
+  const handleMoveSubFolder = async (dest: string) => {
+    if (!folderSub) return;
+    setFolderBusy(true);
+    setFolderError(null);
+    try {
+      const updated = await updateSubscription(folderSub.id, { download_folder: dest });
+      dispatchSubs({ type: "UPDATE", patch: updated });
+      setFolderSub(null);
+    } catch (e) {
+      let message = String(e);
+      try {
+        const body = JSON.parse(message.replace(/^ApiError: /, ""));
+        if (body?.detail) message = body.detail;
+      } catch {}
+      setFolderError(message);
+    } finally {
+      setFolderBusy(false);
     }
   };
 
@@ -1506,11 +1669,22 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                   <div className={styles.advancedRow}>
                     <label className={styles.advancedLabel}>
                       Download Folder
-                      <input
-                        className={styles.advancedInput}
+                      <FolderPicker
                         value={downloadFolder}
-                        onChange={(e) => setDownloadFolder(e.target.value)}
-                        onBlur={handleSaveSettings}
+                        label="Default download folder"
+                        onChange={(v) => {
+                          setDownloadFolder(v);
+                          void updateSettings({ download_folder: v }).catch(console.error);
+                        }}
+                      />
+                    </label>
+                    <label className={styles.advancedLabel}>
+                      Save to (this download)
+                      <FolderPicker
+                        value={outputFolder}
+                        onChange={setOutputFolder}
+                        defaultLabel="Default folder"
+                        label="Save to"
                       />
                     </label>
                     <label className={styles.advancedLabel}>
@@ -1875,6 +2049,46 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
             </button>
             <button
               className={styles.ghostBtn}
+              disabled={selectedCompleted.size === 0}
+              onClick={playSelected}
+              title="Queue the selected files in the player"
+            >
+              Play selected
+            </button>
+            <button
+              className={styles.ghostBtn}
+              disabled={selectedCompleted.size === 0}
+              onClick={addSelected}
+              title="Append the selected files to the player playlist without playing"
+            >
+              Add to playlist
+            </button>
+            <button
+              className={styles.ghostBtn}
+              disabled={selectedCompleted.size === 0 || libraryBusy}
+              onClick={() => setLibraryDialog({ kind: "move", ids: Array.from(selectedCompleted) })}
+              title="Move the selected files to another folder in the download folder"
+            >
+              Move to folder…
+            </button>
+            <button
+              className={styles.ghostBtn}
+              disabled={selectedCompleted.size === 0 || libraryBusy}
+              onClick={() => setLibraryDialog({ kind: "delete", ids: Array.from(selectedCompleted) })}
+              title="Delete the selected files from disk and remove them from the library"
+            >
+              Delete files…
+            </button>
+            <button
+              className={styles.ghostBtn}
+              disabled={libraryBusy}
+              onClick={runRescan}
+              title="Relink files moved outside StreamSnap and find files not in the library"
+            >
+              {libraryBusy ? "Scanning…" : "Rescan library"}
+            </button>
+            <button
+              className={styles.ghostBtn}
               disabled={completedOnly.length === 0}
               onClick={handleClearCompleted}
               title={hasCompletedSelection ? "Clear the selected completed downloads" : "Clear all completed downloads"}
@@ -1901,6 +2115,21 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
           {selectedCompleted.size > 0 && (
             <div className={styles.downloadSelectedBar}>
               Download Selected
+            </div>
+          )}
+
+          {playlistNote && (
+            <div className={styles.libraryMsg} role="status">
+              {playlistNote}
+            </div>
+          )}
+
+          {libraryMsg && (
+            <div className={styles.libraryMsg} role="status">
+              {libraryMsg}
+              <button className={styles.libraryMsgClose} onClick={() => setLibraryMsg(null)} aria-label="Dismiss">
+                ×
+              </button>
             </div>
           )}
 
@@ -1967,7 +2196,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                     type="checkbox"
                                     className={styles.checkbox}
                                     checked={selectedCompleted.has(d.id)}
-                                    onChange={() => toggleSelection(setSelectedCompleted, d.id)}
+                                    onChange={(e) => handleCompletedCheck(e, d.id)}
                                   />
                                 </td>
                                 <td>
@@ -1977,14 +2206,40 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                     )}
                                     <div className={styles.videoCellText}>
                                       {d.status === "completed" && d.output_path ? (
-                                        <button
-                                          type="button"
-                                          className={styles.videoTitleLink}
-                                          onClick={() => window.open(`/api/downloads/${d.id}/stream`, "_blank")}
-                                          title={`Play ${d.title ?? d.url}`}
-                                        >
-                                          {d.title ?? d.url}
-                                        </button>
+                                        <>
+<div className={styles.titleRow}>
+  <button
+                                            type="button"
+                                            className={styles.videoTitleLink}
+                                            onClick={() => playFromList(d.id)}
+                                            title={`Play ${d.title ?? d.url} in the player`}
+                                          >
+                                            {d.title ?? d.url}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className={styles.addPlaylistBtn}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              addToPlaylist([d]);
+                                            }}
+                                            title="Add to playlist"
+                                            aria-label={`Add ${d.title ?? d.url} to playlist`}
+                                          >
+                                            +
+                                          </button>
+</div>
+                                        {trackKind(d) === "video" && (
+                                          <span className={styles.playChoice}>
+                                            <button type="button" className={styles.playChoiceBtn} onClick={() => playFromList(d.id, "video")} title="Play in the video window">
+                                              ▶ Video
+                                            </button>
+                                            <button type="button" className={styles.playChoiceBtn} onClick={() => playFromList(d.id, "amp")} title="Play the audio in the AMP">
+                                              ♫ Music
+                                            </button>
+                                          </span>
+                                        )}
+                                        </>
                                       ) : (
                                         <span className={styles.videoTitle} title={d.title ?? d.url}>
                                           {d.title ?? d.url}
@@ -2006,7 +2261,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                         <button
                                           className={styles.iconBtn}
                                           onClick={() => window.open(`/api/downloads/${d.id}/stream`, "_blank")}
-                                          title="Play in new tab"
+                                          title="Open in new tab"
                                         >
                                           <PlayIcon />
                                         </button>
@@ -2102,7 +2357,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                   type="checkbox"
                                   className={styles.checkbox}
                                   checked={selectedCompleted.has(d.id)}
-                                  onChange={() => toggleSelection(setSelectedCompleted, d.id)}
+                                  onChange={(e) => handleCompletedCheck(e, d.id)}
                                 />
                               </td>
                               <td>
@@ -2112,14 +2367,40 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                   )}
                                   <div className={styles.videoCellText}>
                                     {d.status === "completed" && d.output_path ? (
-                                      <button
-                                        type="button"
-                                        className={styles.videoTitleLink}
-                                        onClick={() => window.open(`/api/downloads/${d.id}/stream`, "_blank")}
-                                        title={`Play ${d.title ?? d.url}`}
-                                      >
-                                        {d.title ?? d.url}
-                                      </button>
+                                      <>
+<div className={styles.titleRow}>
+  <button
+                                          type="button"
+                                          className={styles.videoTitleLink}
+                                          onClick={() => playFromList(d.id)}
+                                          title={`Play ${d.title ?? d.url} in the player`}
+                                        >
+                                          {d.title ?? d.url}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className={styles.addPlaylistBtn}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            addToPlaylist([d]);
+                                          }}
+                                          title="Add to playlist"
+                                          aria-label={`Add ${d.title ?? d.url} to playlist`}
+                                        >
+                                          +
+                                        </button>
+</div>
+                                      {trackKind(d) === "video" && (
+                                        <span className={styles.playChoice}>
+                                          <button type="button" className={styles.playChoiceBtn} onClick={() => playFromList(d.id, "video")} title="Play in the video window">
+                                            ▶ Video
+                                          </button>
+                                          <button type="button" className={styles.playChoiceBtn} onClick={() => playFromList(d.id, "amp")} title="Play the audio in the AMP">
+                                            ♫ Music
+                                          </button>
+                                        </span>
+                                      )}
+                                      </>
                                     ) : (
                                       <span className={styles.videoTitle} title={d.title ?? d.url}>
                                         {d.title ?? d.url}
@@ -2141,7 +2422,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                       <button
                                         className={styles.iconBtn}
                                         onClick={() => window.open(`/api/downloads/${d.id}/stream`, "_blank")}
-                                        title="Play in new tab"
+                                        title="Open in new tab"
                                       >
                                         <PlayIcon />
                                       </button>
@@ -2253,6 +2534,16 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                     style={{ width: "100px" }}
                   />
                 </label>
+              </div>
+
+              <div className={styles.addSubRow}>
+                <span>Save to</span>
+                <FolderPicker
+                  value={outputFolder}
+                  onChange={setOutputFolder}
+                  defaultLabel="Default folder"
+                  label="Save to"
+                />
               </div>
 
               <div className={styles.addSubRow}>
@@ -2399,6 +2690,16 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                         </button>
                         <button
                           className={styles.iconBtn}
+                          onClick={() => {
+                            setFolderError(null);
+                            setFolderSub(s);
+                          }}
+                          title="Move this subscription's folder (its files move with it)"
+                        >
+                          <FolderIcon />
+                        </button>
+                        <button
+                          className={styles.iconBtn}
                           onClick={() => openTmdbMatch(s)}
                           title={
                             s.tmdb_id
@@ -2446,6 +2747,122 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       {/* Settings modal lives in App.tsx so it's reachable from the Media
           tab too — keeping it here would mean unmounting it whenever the
           user switches tabs, breaking the gear button on Media. */}
+
+      {/* ── Library dialogs: bulk move / delete / rescan ── */}
+      {libraryDialog && libraryDialog.kind === "move" && (
+        <Dialog
+          title={`Move ${libraryDialog.ids.length} file${libraryDialog.ids.length === 1 ? "" : "s"} to…`}
+          onClose={() => !libraryBusy && setLibraryDialog(null)}
+        >
+          <FolderBrowser
+            initialPath=""
+            confirmLabel="Move here"
+            busy={libraryBusy}
+            onCancel={() => setLibraryDialog(null)}
+            onConfirm={(dest) => {
+              const ids = libraryDialog.ids;
+              setLibraryDialog(null);
+              void runBulkMove(ids, dest);
+            }}
+          />
+        </Dialog>
+      )}
+
+      {libraryDialog && libraryDialog.kind === "delete" && (
+        <Dialog title="Delete files from disk?" onClose={() => !libraryBusy && setLibraryDialog(null)}>
+          <div className={styles.libraryBody}>
+            <p>
+              {libraryDialog.ids.length} file{libraryDialog.ids.length === 1 ? "" : "s"} will be deleted from
+              disk and removed from the library. This can't be undone.
+            </p>
+            <div className={styles.libraryFoot}>
+              <button className={styles.ghostBtn} onClick={() => setLibraryDialog(null)} disabled={libraryBusy}>
+                Cancel
+              </button>
+              <button
+                className={styles.libraryDanger}
+                disabled={libraryBusy}
+                onClick={() => {
+                  const ids = libraryDialog.ids;
+                  setLibraryDialog(null);
+                  void runBulkDelete(ids, true);
+                }}
+              >
+                Delete files
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {libraryDialog && libraryDialog.kind === "rescan" && (
+        <Dialog title="Library rescan" onClose={() => !libraryBusy && setLibraryDialog(null)}>
+          <div className={styles.libraryBody}>
+            <p>
+              Relinked {libraryDialog.report.relinked.length} moved file
+              {libraryDialog.report.relinked.length === 1 ? "" : "s"}. {libraryDialog.report.missing.length} row
+              {libraryDialog.report.missing.length === 1 ? "" : "s"} still have no file.
+            </p>
+            {libraryDialog.report.relinked.length > 0 && (
+              <ul className={styles.libraryList}>
+                {libraryDialog.report.relinked.map((r) => (
+                  <li key={r.id}>Relinked: {r.path}</li>
+                ))}
+              </ul>
+            )}
+            {libraryDialog.report.unlinked.length > 0 ? (
+              <>
+                <p>
+                  {libraryDialog.report.unlinked.length} media file
+                  {libraryDialog.report.unlinked.length === 1 ? " is" : "s are"} in the download folder but not in the
+                  library:
+                </p>
+                <ul className={styles.libraryList}>
+                  {libraryDialog.report.unlinked.slice(0, 200).map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+                <div className={styles.libraryFoot}>
+                  <button className={styles.ghostBtn} onClick={() => setLibraryDialog(null)} disabled={libraryBusy}>
+                    Close
+                  </button>
+                  <button
+                    className={styles.libraryPrimary}
+                    disabled={libraryBusy}
+                    onClick={() => void runImport(libraryDialog.report.unlinked)}
+                  >
+                    Add all {libraryDialog.report.unlinked.length} to library
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className={styles.libraryFoot}>
+                <button className={styles.ghostBtn} onClick={() => setLibraryDialog(null)}>
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </Dialog>
+      )}
+
+      {/* ── Move subscription folder ── */}
+      {folderSub && (
+        <Dialog
+          title={`Folder for ${folderSub.title ?? "subscription"}`}
+          onClose={() => !folderBusy && setFolderSub(null)}
+        >
+          <FolderBrowser
+            initialPath=""
+            confirmLabel="Move here"
+            note={`Currently: ${folderSub.download_dir ?? "default folder"}. Its files move with it.`}
+            busy={folderBusy}
+            onCancel={() => setFolderSub(null)}
+            onConfirm={(dest) => void handleMoveSubFolder(dest)}
+          />
+          {folderError && <div className={styles.folderError}>{folderError}</div>}
+        </Dialog>
+      )}
 
       {/* ── TMDB match picker ── */}
       {tmdbSub && (

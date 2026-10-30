@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import FolderPicker from "@/components/FolderPicker";
 import {
   backupDb,
   deleteDbBackup,
@@ -34,6 +35,7 @@ import {
 } from "@/api/notifications";
 import { padEpisodeNumbers } from "@/api/downloads";
 import { getTmdbStatus, type TmdbStatus } from "@/api/tmdb";
+import { useOpenIn, type OpenIn } from "@/player/openPreference";
 import { useTheme } from "@/theme/ThemeContext";
 import { BACKGROUND_OPTIONS } from "@/theme/types";
 import { useUiPrefs } from "@/ui/UiPrefsContext";
@@ -84,6 +86,7 @@ interface SettingsState {
   restrict_filenames: string;
   temp_path: string;
   download_folder: string;
+  media_folders: string; // JSON-encoded list of absolute container paths
   // Auth
   cookies_from_browser: string;
   username: string;
@@ -140,7 +143,8 @@ const DEFAULTS: SettingsState = {
   output_template: "%(title)s.%(ext)s",
   restrict_filenames: "false",
   temp_path: "",
-  download_folder: "./downloads",
+  download_folder: "",
+  media_folders: "[]",
   cookies_from_browser: "",
   username: "",
   password: "",
@@ -220,6 +224,7 @@ const CHANNEL_KINDS: { kind: ChannelKind; label: string; fields: { key: string; 
 export default function Settings({ onClose }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("Format");
   const [s, setS] = useState<SettingsState>(DEFAULTS);
+  const [openIn, setOpenIn] = useOpenIn();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -247,6 +252,23 @@ export default function Settings({ onClose }: Props) {
   // ── Episode-number padding ───────────────────────────────────────────────
   const [padBusy, setPadBusy] = useState(false);
   const [padResult, setPadResult] = useState<string | null>(null);
+
+  // ── Media folders (Output tab) ───────────────────────────────────────────
+  const [newMediaFolder, setNewMediaFolder] = useState("");
+  const [mediaFolderError, setMediaFolderError] = useState<string | null>(null);
+  const mediaFolders = parseFolders(s.media_folders);
+
+  const setMediaFolders = (next: string[]) => {
+    set("media_folders", JSON.stringify(next));
+    setMediaFolderError(null);
+  };
+
+  const handleAddMediaFolder = () => {
+    const path = newMediaFolder.trim();
+    if (!path) return;
+    setMediaFolders([...mediaFolders, path]);
+    setNewMediaFolder("");
+  };
 
   const handlePadEpisodes = async () => {
     setPadBusy(true);
@@ -483,6 +505,12 @@ export default function Settings({ onClose }: Props) {
     try {
       await updateSettings(s as unknown as Record<string, string>);
       setSaved(true);
+    } catch (e) {
+      // The backend rejects an invalid media folder with a 400 detail; show it in that section.
+      const msg = errorDetail(e);
+      if (!/media.folder/i.test(msg)) throw e;
+      setMediaFolderError(msg);
+      setActiveTab("Output");
     } finally {
       setSaving(false);
     }
@@ -799,8 +827,54 @@ export default function Settings({ onClose }: Props) {
             {/* ── Output ── */}
             {activeTab === "Output" && (
               <div className={styles.fields}>
-                <Field label="Download Folder" hint="Root folder for all downloads">
-                  <input className={styles.input} value={s.download_folder} onChange={(e) => set("download_folder", e.target.value)} />
+                <Field label="Download Folder" hint="Default folder for new downloads. Must be inside the download root.">
+                  <FolderPicker
+                    value={s.download_folder}
+                    label="Default download folder"
+                    onChange={(v) => set("download_folder", v)}
+                  />
+                </Field>
+                <Field label="Open files in" hint="Where clicking a finished file plays. Saved in this browser.">
+                  <select className={styles.select} value={openIn} onChange={(e) => setOpenIn(e.target.value as OpenIn)}>
+                    <option value="player">Player</option>
+                    <option value="tab">New tab</option>
+                  </select>
+                </Field>
+                <Field
+                  label="Media folders"
+                  hint="Extra folders to browse and play, as absolute container paths (e.g. /media2). The Docker volume for each folder must also be mounted in the compose file."
+                >
+                  {mediaFolders.length === 0 && <p className={styles.fieldHint}>No extra media folders.</p>}
+                  {mediaFolders.map((path) => (
+                    <div key={path} className={styles.channelRow}>
+                      <span className={styles.channelName}>{path}</span>
+                      <button
+                        className={styles.channelDelete}
+                        onClick={() => setMediaFolders(mediaFolders.filter((p) => p !== path))}
+                        title="Remove"
+                        aria-label={`Remove ${path}`}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <div className={styles.editorActions}>
+                    <input
+                      className={styles.input}
+                      value={newMediaFolder}
+                      onChange={(e) => setNewMediaFolder(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddMediaFolder()}
+                      placeholder="/media2"
+                    />
+                    <button className={styles.presetBtn} onClick={handleAddMediaFolder} disabled={!newMediaFolder.trim()}>
+                      Add
+                    </button>
+                  </div>
+                  {mediaFolderError && (
+                    <p className={styles.ytdlpStatus} data-updated="false">
+                      ✕ {mediaFolderError}
+                    </p>
+                  )}
                 </Field>
                 <Field label="Temp Path" hint="Temporary download path (empty = same as download folder)">
                   <input className={styles.input} value={s.temp_path} onChange={(e) => set("temp_path", e.target.value)} placeholder="Same as download folder" />
@@ -1196,6 +1270,26 @@ function Toggle({ label, hint, checked, onChange }: { label: string; hint?: stri
       </span>
     </label>
   );
+}
+
+function parseFolders(raw: string): string[] {
+  try {
+    const list: unknown = JSON.parse(raw || "[]");
+    return Array.isArray(list) ? list.filter((p): p is string => typeof p === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The `detail` of a FastAPI error body (ApiError carries the raw response text), else the message. */
+function errorDetail(e: unknown): string {
+  const text = e instanceof Error ? e.message : "Save failed";
+  try {
+    const detail = JSON.parse(text)?.detail;
+    return typeof detail === "string" ? detail : text;
+  } catch {
+    return text;
+  }
 }
 
 // ── Notification channel card (view / edit / test) ───────────────────────────

@@ -40,6 +40,8 @@ class DownloadCreateRequest(BaseModel):
     category: str | None = None
     subcategory: str | None = None
     tag: str | None = None
+    # Root-relative folder chosen in the UI. None/"" = the default download folder.
+    output_folder: str | None = None
 
 
 class DownloadInfo(BaseModel):
@@ -108,6 +110,8 @@ class SubscriptionCreate(BaseModel):
     category: str | None = None
     subcategory: str | None = None
     tag: str | None = None
+    # Root-relative folder the playlist folder is created in. None/"" = default folder.
+    download_folder: str | None = None
     # Pin TMDB artwork to a specific title instead of the title search.
     tmdb_id: int | None = None
     tmdb_type: str | None = None
@@ -115,6 +119,8 @@ class SubscriptionCreate(BaseModel):
 
 class SubscriptionUpdate(BaseModel):
     check_interval_minutes: int | None = None
+    # Moves the subscription's folder into this root-relative folder. "" = default folder.
+    download_folder: str | None = None
     format_spec: str | None = None
     output_template: str | None = None
     is_active: bool | None = None
