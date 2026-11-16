@@ -33,7 +33,10 @@ import {
   testChannelConfig,
   updateChannel,
 } from "@/api/notifications";
-import { padEpisodeNumbers } from "@/api/downloads";
+import { padEpisodeNumbers, repairMusicTags } from "@/api/downloads";
+import type { MusicRepairReport } from "@/api/downloads";
+import { listMediaRoots } from "@/api/media";
+import type { MediaRoot } from "@/api/media";
 import { getTmdbStatus, type TmdbStatus } from "@/api/tmdb";
 import { useOpenIn, type OpenIn } from "@/player/openPreference";
 import { useTheme } from "@/theme/ThemeContext";
@@ -253,6 +256,16 @@ export default function Settings({ onClose }: Props) {
   const [padBusy, setPadBusy] = useState(false);
   const [padResult, setPadResult] = useState<string | null>(null);
 
+  // ── Music-tag repair (Metadata tab) ──────────────────────────────────────
+  // Two steps on purpose: the preview is what makes it safe to run at all, so
+  // "Apply" is only offered once the user has seen what would change.
+  const [repairBusy, setRepairBusy] = useState<"preview" | "apply" | null>(null);
+  const [repairRoot, setRepairRoot] = useState("0");
+  const [repairRoots, setRepairRoots] = useState<MediaRoot[]>([]);
+  const [repairReport, setRepairReport] = useState<MusicRepairReport | null>(null);
+  const [repairError, setRepairError] = useState<string | null>(null);
+  const [repairCovers, setRepairCovers] = useState(false);
+
   // ── Media folders (Output tab) ───────────────────────────────────────────
   const [newMediaFolder, setNewMediaFolder] = useState("");
   const [mediaFolderError, setMediaFolderError] = useState<string | null>(null);
@@ -286,6 +299,29 @@ export default function Settings({ onClose }: Props) {
       setPadBusy(false);
     }
   };
+
+  const runRepair = async (apply: boolean) => {
+    setRepairBusy(apply ? "apply" : "preview");
+    setRepairError(null);
+    if (apply) setRepairReport(null);
+    try {
+      setRepairReport(
+        await repairMusicTags({ rootId: repairRoot, apply, overwriteCover: repairCovers }),
+      );
+    } catch (e) {
+      setRepairError(e instanceof Error ? e.message : "Repair failed");
+      setRepairReport(null);
+    } finally {
+      setRepairBusy(null);
+    }
+  };
+
+  // The music a user wants repaired is often in a media folder rather than the
+  // download folder, so offer every root the Library already knows about.
+  useEffect(() => {
+    if (activeTab !== "Metadata") return;
+    listMediaRoots().then(setRepairRoots).catch(() => setRepairRoots([]));
+  }, [activeTab]);
 
   useEffect(() => {
     getSettings().then(({ settings }) => {
@@ -723,7 +759,7 @@ export default function Settings({ onClose }: Props) {
                 </Row>
 
                 <SectionTitle>Music Tags</SectionTitle>
-                <p className={styles.authNote}>
+                <p className={styles.infoNote}>
                   Writes artist, title, album, album artist, year and track number into
                   audio downloads, so Plex and Jellyfin file them under the right artist
                   instead of &quot;Various Artists&quot;. Values come from the site&apos;s own
@@ -738,6 +774,104 @@ export default function Settings({ onClose }: Props) {
                     onChange={() => toggle("music_tags")}
                   />
                 </Row>
+
+                <SectionTitle>Fix existing music</SectionTitle>
+                <p className={styles.infoNote}>
+                  Retags audio already on disk. A folder is read as a whole and every
+                  file in it is written with the same album and album artist, which is
+                  what Plex groups an album by — so a playlist whose tracks each carry
+                  the album they were originally released on stops appearing as one
+                  album per track. Each track also gets its own embedded artwork, and
+                  the folder gets a <code>cover.jpg</code>. Track titles and per-track
+                  artists are kept.
+                </p>
+                <Row>
+                  <Field label="Folder to scan" hint="Every sub-folder is treated as its own album">
+                    <select
+                      className={styles.input}
+                      value={repairRoot}
+                      onChange={(e) => {
+                        setRepairRoot(e.target.value);
+                        setRepairReport(null);
+                      }}
+                    >
+                      {(repairRoots.length ? repairRoots : [{ id: "0", label: "Downloads", path: "" }]).map((r) => (
+                        <option key={r.id} value={r.id}>{r.label}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </Row>
+                <Row>
+                  <Toggle
+                    label="Replace artwork that is already there"
+                    hint="Off by default, so a cover.jpg you chose yourself is left alone."
+                    checked={repairCovers}
+                    onChange={() => setRepairCovers((v) => !v)}
+                  />
+                </Row>
+                <Field
+                  label="Preview first"
+                  hint="Nothing is written until you apply the change."
+                >
+                  <div className={styles.rowButtons}>
+                    <button
+                      type="button"
+                      className={styles.saveBtn}
+                      disabled={repairBusy !== null}
+                      onClick={() => runRepair(false)}
+                    >
+                      {repairBusy === "preview" ? "Scanning…" : "Preview changes"}
+                    </button>
+                    {repairReport && !repairReport.applied && repairReport.files_changed > 0 && (
+                      <button
+                        type="button"
+                        className={styles.saveBtn}
+                        disabled={repairBusy !== null}
+                        onClick={() => runRepair(true)}
+                      >
+                        {repairBusy === "apply"
+                          ? "Writing…"
+                          : `Apply to ${repairReport.files_changed} file(s)`}
+                      </button>
+                    )}
+                  </div>
+                </Field>
+
+                {repairError && <p className={styles.authNote}>{repairError}</p>}
+
+                {repairReport && (
+                  <div className={styles.fields}>
+                    <p className={styles.infoNote}>
+                      {repairReport.applied
+                        ? `Retagged ${repairReport.files_changed} file(s) across ${repairReport.folders.length} folder(s).`
+                        : repairReport.files_changed === 0
+                          ? `Scanned ${repairReport.files_scanned} file(s) in ${repairReport.folders_scanned} folder(s) — everything is already consistent.`
+                          : `${repairReport.files_changed} of ${repairReport.files_scanned} file(s) would change, in ${repairReport.folders.length} folder(s).`}
+                      {repairReport.covers_written > 0 &&
+                        ` ${repairReport.covers_written} cover image(s).`}
+                    </p>
+                    {repairReport.folders.slice(0, 25).map((folder) => (
+                      <div key={folder.folder} className={styles.repairFolder}>
+                        <strong>{folder.album}</strong>
+                        <span className={styles.repairMeta}>
+                          {" — "}{folder.album_artist}{" · "}{folder.files.length} track(s)
+                        </span>
+                        <div className={styles.repairPath}>{folder.folder}</div>
+                      </div>
+                    ))}
+                    {repairReport.folders.length > 25 && (
+                      <p className={styles.infoNote}>
+                        …and {repairReport.folders.length - 25} more folder(s).
+                      </p>
+                    )}
+                    {repairReport.errors.length > 0 && (
+                      <p className={styles.authNote}>
+                        {repairReport.errors.length} file(s) could not be written:{" "}
+                        {repairReport.errors.slice(0, 3).map((e) => e.error).join("; ")}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

@@ -465,6 +465,50 @@ async def pad_episode_numbers_endpoint(session: AsyncSession = Depends(get_sessi
     return {"renamed": len(renamed), "changes": renamed[:200]}
 
 
+class RepairMusicRequest(BaseModel):
+    """Which folder to repair, and whether to actually write.
+
+    ``root_id`` is a media root id (``"0"`` is the download folder — see
+    ``storage.media_roots``); ``path`` narrows the repair to one folder inside
+    it. ``apply`` defaults to ``False``, so the plain call is a preview.
+    """
+
+    root_id: str = "0"
+    path: str | None = None
+    apply: bool = False
+    overwrite_cover: bool = False
+
+
+@router.post("/repair-music")
+async def repair_music_tags(
+    body: RepairMusicRequest | None = None,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Retag audio already on disk so each folder is one album again.
+
+    Files downloaded before music tagging existed, or before the "a playlist is
+    one album" rule, keep the tags they were written with — a greatest-hits
+    playlist whose tracks each carry their original album appears in Plex as one
+    album per track. This reads a whole folder, picks the one
+    ``(album, album artist)`` pair it should carry, and writes every file to
+    agree, embedding each track's own art and the folder's ``cover.jpg``.
+
+    A **preview by default**: nothing is written unless ``apply`` is true.
+    """
+    from app.services.music_repair import repair_music
+    from app.services.storage import get_root, resolve_in_root
+
+    body = body or RepairMusicRequest()
+    root = await get_root(session, body.root_id)
+    target = resolve_in_root(root, body.path) if body.path else root
+    if not os.path.isdir(target):
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    return await repair_music(
+        session, target, apply=body.apply, overwrite_cover=body.overwrite_cover
+    )
+
+
 @router.get("/grouped")
 async def list_grouped_downloads(session: AsyncSession = Depends(get_session)) -> dict:
     """Return downloads grouped by subscription and manual downloads separately.

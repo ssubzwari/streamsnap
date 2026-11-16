@@ -1165,6 +1165,7 @@ Responses are JSON; `2xx` on success, `4xx`/`5xx` with `{"detail": "..."}` on er
 | `GET` | `/api/downloads/grouped` | Completed downloads grouped by subscription |
 | `GET` | `/api/downloads/export` | Export the queue as a URL list |
 | `POST` | `/api/downloads/pad-episodes` | Zero-pad episode numbers of files already on disk |
+| `POST` | `/api/downloads/repair-music` | Retag audio already on disk so each folder is one album (`apply: false` previews) |
 | `POST` | `/api/downloads/playlist/preview` | Start async playlist expansion -> `202` + job id |
 | `GET` | `/api/downloads/playlist/preview/{job_id}` | Poll expansion job |
 | `POST` | `/api/downloads/playlist` | Enqueue a reviewed playlist |

@@ -422,24 +422,53 @@ Each field is resolved in order, first hit wins:
 | Tag | Source |
 |---|---|
 | artist / title | the site's own `artist` + `track` fields → the file name, split as `Artist - Title` → the channel name (a trailing `- Topic` is stripped) |
-| **album artist** | the site's `album_artist` → whatever artist was resolved above → the channel |
-| album | the site's `album` → the playlist title → the download folder's name |
+| **album artist** | *in a playlist:* the playlist's uploader → the channel → the resolved artist. *Otherwise:* the site's `album_artist` → the resolved artist → the channel |
+| album | *in a playlist:* the playlist title. *Otherwise:* the site's `album` → the download folder's name |
 | year | `release_year` → `release_date` → `upload_date` |
 | track number | position in the playlist |
 
-**Why album artist matters:** Plex files an album under *Various Artists* when its tracks
-carry no consistent `ALBUMARTIST`. StreamSnap never writes an artist without also writing
-an album artist, which is what keeps your library filed correctly.
+**Why album artist matters:** Plex groups an album by `(ALBUM, ALBUMARTIST)` and files it
+under *Various Artists* when its tracks carry no consistent `ALBUMARTIST`. StreamSnap never
+writes an artist without also writing an album artist, which is what keeps your library
+filed correctly.
+
+**Why a playlist is one album:** YouTube Music gives every track the album it was
+*originally released on*, so a 47-track greatest-hits playlist would otherwise arrive as 47
+one-track albums. When a track is downloaded as part of a playlist, the playlist wins for
+both album and album artist — they are then the same for every track in the folder, which
+is exactly what Plex groups on. Each track keeps its own **artist**, so a guest vocalist
+is not flattened away; a standalone download still keeps its real album, where that is the
+right answer.
 
 Works on `.m4a`, `.mp3`, `.opus`, `.ogg`, `.oga`, `.flac` and `.m4b`. Video downloads are
 left alone, and a file that can't be tagged is left exactly as yt-dlp wrote it — tagging
 never fails a download.
 
-Two limits worth knowing:
+One limit worth knowing: tagging happens **at download time**, from each file on its own —
+it cannot see that a folder's other tracks disagree with it. Use **Fix existing music**
+below for files that are already on disk.
 
-- **New downloads only.** Files already on disk keep their current tags.
-- **Per-file.** A genuinely multi-artist playlist gets one album artist per track, so Plex
-  shows several albums rather than a single compilation.
+### Fix existing music
+
+Settings → Metadata & Thumbnails → **Fix existing music** retags audio that is already on
+disk. It is the counterpart to tagging at download time, and it can do one thing the
+download path cannot: it reads a **whole folder at once**, picks the single
+`(album, album artist)` pair the folder should carry, and writes every file to agree.
+
+That is what repairs a library downloaded before these rules existed — including the
+one-album-per-track split described above.
+
+| | |
+|---|---|
+| **Album** | the folder's name — the grouping you already see in your library, and the same for every file in it |
+| **Album artist** | whoever performs at least two thirds of the folder; below that it is a real compilation and becomes *Various Artists* |
+| **Kept** | each track's own title and artist, so a guest vocalist survives |
+| **Artwork** | each track's own image is embedded, and the folder gets a `cover.jpg` |
+
+Pick a folder — the download folder or any media folder — and press **Preview changes**.
+Nothing is written: the preview says how many files would change and what each folder
+would become. **Apply** then writes it. Re-running is a no-op, and an existing `cover.jpg`
+is left alone unless you ask for it to be replaced.
 
 ### Artwork
 

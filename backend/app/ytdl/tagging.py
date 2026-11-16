@@ -149,6 +149,65 @@ _WRITERS = {
 SUPPORTED_EXTS = frozenset(_WRITERS)
 
 
+# ── Reading back ──────────────────────────────────────────────────────────────
+
+# The inverse of the writers above, for the fields the repair pass reconciles.
+_MP4_ATOMS = {
+    "title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb",
+    "album_artist": "aART", "date": "\xa9day", "genre": "\xa9gen",
+}
+_ID3_FRAMES = {
+    "title": "TIT2", "artist": "TPE1", "album": "TALB",
+    "album_artist": "TPE2", "date": "TDRC", "genre": "TCON",
+}
+_VORBIS_KEYS = {
+    "title": "TITLE", "artist": "ARTIST", "album": "ALBUM",
+    "album_artist": "ALBUMARTIST", "date": "DATE", "genre": "GENRE",
+}
+
+
+def _clean(value) -> str | None:
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else None
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
+def read_tags(path: str) -> dict:
+    """The tags already on the file at *path*, as :func:`write_tags` field names.
+
+    Only the fields the repair pass reasons about, and only the ones actually
+    present. An unsupported or unreadable file reads as ``{}`` rather than
+    raising — a folder with one broken file still gets reconciled.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext in (".m4a", ".m4b", ".mp4"):
+            audio, keys = MP4(path), _MP4_ATOMS
+        elif ext == ".mp3":
+            audio, keys = MP3(path), _ID3_FRAMES
+            audio = audio.tags or {}
+        elif ext == ".flac":
+            audio, keys = FLAC(path), _VORBIS_KEYS
+        elif ext in (".opus", ".ogg", ".oga"):
+            audio = OggOpus(path) if ext == ".opus" else OggVorbis(path)
+            keys = _VORBIS_KEYS
+        else:
+            return {}
+    except Exception:  # noqa: BLE001 — an unreadable file is simply unknown
+        return {}
+
+    out: dict = {}
+    for field, key in keys.items():
+        try:
+            value = _clean(audio.get(key))
+        except Exception:  # noqa: BLE001
+            value = None
+        if value:
+            out[field] = value
+    return out
+
+
 def can_tag(path: str | None) -> bool:
     return bool(path) and os.path.splitext(path)[1].lower() in SUPPORTED_EXTS
 

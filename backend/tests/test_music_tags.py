@@ -333,3 +333,89 @@ def test_picture_block_is_a_front_cover():
     assert pic.data == JPG
     assert pic.mime == "image/jpeg"
     assert pic.type == 3
+
+
+# ── A playlist is one album ───────────────────────────────────────────────────
+#
+# Plex groups an album by (ALBUM, ALBUMARTIST). YouTube Music gives every track
+# the record it was originally released on, so without these rules a 47-track
+# greatest-hits playlist arrives as 47 one-track albums — the bug these cover.
+
+def _playlist_rows():
+    tracks = [
+        ("In The Air Tonight", "Face Value", "Phil Collins"),
+        ("Sussudio", "No Jacket Required", "Phil Collins"),
+        ("Easy Lover", "Chinese Wall", "Philip Bailey"),   # a real guest artist
+    ]
+    return [
+        trackinfo.derive_tags(
+            f"/music/Phil Collins Hits/Phil Collins - {track}.flac",
+            {
+                "artist": artist,
+                "track": track,
+                "album": original,
+                "playlist_title": "Phil Collins Hits",
+                "playlist_uploader": "Phil Collins - Topic",
+                "uploader": f"{artist} - Topic",
+                "playlist_index": i + 1,
+            },
+        )
+        for i, (track, original, artist) in enumerate(tracks)
+    ]
+
+
+def test_a_playlist_is_one_album_not_one_per_original_release():
+    rows = _playlist_rows()
+    assert {r["album"] for r in rows} == {"Phil Collins Hits"}
+    assert {r["album_artist"] for r in rows} == {"Phil Collins"}
+    # One (album, album artist) pair across the folder == one album in Plex.
+    assert len({(r["album"], r["album_artist"]) for r in rows}) == 1
+
+
+def test_a_playlist_keeps_each_track_its_own_artist():
+    """Only the *album* artist is forced constant — the performer is per track."""
+    assert [r["artist"] for r in _playlist_rows()] == [
+        "Phil Collins",
+        "Phil Collins",
+        "Philip Bailey",
+    ]
+
+
+def test_a_standalone_download_keeps_its_real_album():
+    """Outside a playlist the track's own album is right and must survive."""
+    tags = trackinfo.derive_tags(
+        "/music/Singles/x.flac",
+        {"artist": "Phil Collins", "track": "Sussudio", "album": "No Jacket Required"},
+    )
+    assert tags["album"] == "No Jacket Required"
+    assert tags["album_artist"] == "Phil Collins"
+
+
+def test_a_multi_artist_playlist_groups_under_its_uploader():
+    """Coke Studio: every track a different artist, one show. The uploader is
+    the only value that is the same for all of them."""
+    rows = [
+        trackinfo.derive_tags(
+            f"/music/Coke Studio/{artist} - {track}.flac",
+            {
+                "artist": artist,
+                "track": track,
+                "album": f"{track} (Single)",
+                "playlist_title": "Coke Studio Season 14",
+                "playlist_uploader": "Coke Studio",
+            },
+        )
+        for artist, track in [("Ali Sethi", "Pasoori"), ("Atif Aslam", "Wohi Khuda Hai")]
+    ]
+    assert {r["album"] for r in rows} == {"Coke Studio Season 14"}
+    assert {r["album_artist"] for r in rows} == {"Coke Studio"}
+
+
+def test_playlist_album_artist_falls_back_when_the_playlist_has_no_uploader():
+    """No playlist uploader — the video's channel is still constant per folder."""
+    tags = trackinfo.derive_tags(
+        "/music/Mix/Someone - A Song.m4a",
+        {"playlist_title": "Mix", "uploader": "Lofi Girl - Topic", "album": "Elsewhere"},
+    )
+    assert tags["album"] == "Mix"
+    assert tags["album_artist"] == "Lofi Girl"

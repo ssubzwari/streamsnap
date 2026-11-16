@@ -174,6 +174,55 @@ export async function padEpisodeNumbers(): Promise<{
   return apiFetch("/downloads/pad-episodes", { method: "POST" });
 }
 
+/** One file the repair pass would change, and which fields move. */
+export interface MusicRepairFile {
+  path: string;
+  name: string;
+  changes: Record<string, string | number>;
+  embed_art: boolean;
+  error: string | null;
+}
+
+export interface MusicRepairFolder {
+  folder: string;
+  album: string | null;
+  album_artist: string | null;
+  cover: string | null;
+  files: MusicRepairFile[];
+}
+
+export interface MusicRepairReport {
+  root: string;
+  applied: boolean;
+  folders: MusicRepairFolder[];
+  folders_scanned: number;
+  files_scanned: number;
+  files_changed: number;
+  covers_written: number;
+  errors: { path: string; error: string }[];
+}
+
+/** Retag audio already on disk so each folder is one album again.
+ *
+ *  `apply` defaults to false on the server, so calling this without it is a
+ *  preview — nothing is written and the report says what would change. */
+export async function repairMusicTags(opts: {
+  rootId?: string;
+  path?: string | null;
+  apply?: boolean;
+  overwriteCover?: boolean;
+} = {}): Promise<MusicRepairReport> {
+  return apiFetch("/downloads/repair-music", {
+    method: "POST",
+    body: JSON.stringify({
+      root_id: opts.rootId ?? "0",
+      path: opts.path ?? null,
+      apply: opts.apply ?? false,
+      overwrite_cover: opts.overwriteCover ?? false,
+    }),
+  });
+}
+
 /** Build the URL the browser hits to save the file to disk. The endpoint
  *  serves the file with `Content-Disposition: attachment` so the browser
  *  downloads it instead of streaming inline. */

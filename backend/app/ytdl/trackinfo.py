@@ -12,6 +12,13 @@ The field that matters most is **album artist**: Plex files a track under
 "Various Artists" when an album's tracks carry no consistent ``ALBUMARTIST``,
 so :func:`derive_tags` never returns an artist without also returning an album
 artist.
+
+**A playlist is one album.** YouTube Music gives every track the album it was
+originally released on, so a 47-track greatest-hits playlist would otherwise
+arrive as 47 one-track albums. When a track was downloaded as part of a
+playlist, the playlist wins for ``album`` *and* ``album_artist`` — both are then
+constant across the folder by construction, which is what Plex groups on. The
+per-track ``album`` is still used for a standalone download, where it is right.
 """
 
 import os
@@ -82,6 +89,37 @@ def _year(info: dict) -> str | None:
     return date[:4] if date and len(date) >= 4 else None
 
 
+def _album_fields(
+    path: str, info: dict, *, artist: str | None, channel: str | None
+) -> tuple[str | None, str | None]:
+    """The ``(album, album_artist)`` pair a folder's tracks should agree on.
+
+    Plex groups an album by ``(ALBUM, ALBUMARTIST)``, so the two must come out
+    the same for every track in a folder or the album splits apart. Both are
+    therefore taken from the *playlist* when there is one: the playlist's title
+    and its owner are the same for every track in it, while a track's own
+    ``album`` / ``album_artist`` are whatever record it was first released on.
+    """
+    playlist = _first(info, "playlist_title", "playlist")
+    if playlist:
+        owner = strip_topic(_first(info, "playlist_uploader", "playlist_channel"))
+        # `channel` and `artist` vary per track on a multi-artist playlist, but
+        # they are constant on the single-artist playlists that make up most of
+        # them — and a wrong-but-constant value still groups as one album, which
+        # a right-but-varying one does not. The repair pass reconciles a folder
+        # that really is mixed, because it can see every file at once.
+        return playlist, owner or channel or artist or playlist
+
+    album = _first(info, "album")
+    if not album:
+        # The download folder is the subscription / playlist name, which is the
+        # grouping the user already sees in their library.
+        album = os.path.basename(os.path.dirname(path)) or None
+
+    album_artist = _first(info, "album_artist") or artist or channel or album
+    return album, album_artist
+
+
 def derive_tags(path: str, info: dict | None = None) -> dict:
     """Tags for the audio file at *path*.
 
@@ -99,24 +137,19 @@ def derive_tags(path: str, info: dict | None = None) -> dict:
     artist = _first(info, "artist", "artists") or file_artist or channel
     title = _first(info, "track") or file_title or clean_title(_first(info, "title") or stem)
 
+    album, album_artist = _album_fields(path, info, artist=artist, channel=channel)
+
     tags: dict = {}
     if title:
         tags["title"] = title
     if artist:
         tags["artist"] = artist
-        # Never leave this empty when there is an artist — a missing album
-        # artist is exactly what makes Plex say "Various Artists".
-        tags["album_artist"] = _first(info, "album_artist") or artist
-
-    album = _first(info, "album", "playlist_title", "playlist")
-    if not album:
-        # The download folder is the subscription / playlist name, which is the
-        # grouping the user already sees in their library.
-        parent = os.path.basename(os.path.dirname(path))
-        album = parent or None
     if album:
         tags["album"] = album
-        tags.setdefault("album_artist", channel or album)
+    # Never leave this empty when there is anything to group — a missing album
+    # artist is exactly what makes Plex say "Various Artists".
+    if album_artist and (artist or album):
+        tags["album_artist"] = album_artist
 
     date = _year(info)
     if date:

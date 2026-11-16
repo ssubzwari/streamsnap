@@ -791,3 +791,47 @@
 .bgTilePreview[data-bg='constellation'] { background: radial-gradient(circle, color-mix(in srgb, var(--color-accent) 70%, white) 1px, transparent 1.5px) 0 0/24px 24px, linear-gradient(45deg, transparent 49%, color-mix(in srgb, var(--color-accent) 40%, transparent) 50%, transparent 51%), var(--color-bg); }
 .bgTilePreview[data-bg='neon-lines']   { background: linear-gradient(90deg, transparent, var(--color-accent), transparent) 0 30%/100% 2px no-repeat, linear-gradient(90deg, transparent, #ff5cb0, transparent) 0 70%/100% 2px no-repeat, var(--color-bg); }
 .bgTilePreview[data-bg='snow']         { background: radial-gradient(circle, var(--color-text) 1px, transparent 1.5px) 0 0/16px 16px, radial-gradient(circle, var(--color-text) 0.7px, transparent 1px) 8px 8px/16px 16px, color-mix(in srgb, var(--color-accent) 12%, var(--color-bg)); }
+
+/* ── Music-tag repair ────────────────────────────────────────────────────── */
+
+/* Two buttons side by side: "Preview changes", then "Apply" once there is
+   something to apply. */
+.rowButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* A plain explanatory note. Neutral on purpose — `.authNote` is warning-tinted,
+   which is wrong for a description or for good news. */
+.infoNote {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: var(--color-surface-hi);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  margin: 0;
+}
+
+/* One folder in the preview: the album it would become, then its path. */
+.repairFolder {
+  background: var(--color-surface-hi);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.repairMeta {
+  color: var(--color-text-muted);
+}
+
+.repairPath {
+  margin-top: var(--space-1);
+  font-size: 11px;
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
