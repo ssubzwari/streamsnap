@@ -1672,6 +1672,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                       <FolderPicker
                         value={downloadFolder}
                         label="Default download folder"
+                        defaultLabel="Library root"
                         onChange={(v) => {
                           setDownloadFolder(v);
                           void updateSettings({ download_folder: v }).catch(console.error);

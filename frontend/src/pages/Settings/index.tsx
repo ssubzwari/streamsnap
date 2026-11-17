@@ -961,10 +961,14 @@ export default function Settings({ onClose }: Props) {
             {/* ── Output ── */}
             {activeTab === "Output" && (
               <div className={styles.fields}>
-                <Field label="Download Folder" hint="Default folder for new downloads. Must be inside the download root.">
+                <Field
+                  label="Download Folder"
+                  hint="Default folder for new downloads. Must be inside the download root. Choose “Library root” to clear it and save straight into the root again."
+                >
                   <FolderPicker
                     value={s.download_folder}
                     label="Default download folder"
+                    defaultLabel="Library root"
                     onChange={(v) => set("download_folder", v)}
                   />
                 </Field>

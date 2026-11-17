@@ -671,7 +671,7 @@ class DownloadManager:
         self._wake()
 
     async def _update_db(self, download_id: int, **kwargs) -> None:
-        from datetime import datetime
+        from app.utils import utcnow
         from app.models import Download
 
         SessionLocal = get_sessionmaker()
@@ -681,7 +681,7 @@ class DownloadManager:
                 return
             for key, value in kwargs.items():
                 setattr(download, key, value)
-            download.updated_at = datetime.utcnow()
+            download.updated_at = utcnow()
             await session.commit()
 
     async def _get_download(self, download_id: int) -> object | None:

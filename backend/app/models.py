@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from app.utils import utcnow
+
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,8 +41,8 @@ class Download(Base):
     height: Mapped[int | None]
     vcodec: Mapped[str | None] = mapped_column(String)
     acodec: Mapped[str | None] = mapped_column(String)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 class Subscription(Base):
@@ -68,7 +70,7 @@ class Subscription(Base):
     # "movie" (defaults to "tv" when only an id is given).
     tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tmdb_type: Mapped[str | None] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class SeenVideo(Base):
@@ -79,7 +81,7 @@ class SeenVideo(Base):
     video_id: Mapped[str] = mapped_column(String)
     title: Mapped[str | None] = mapped_column(String)
     upload_date: Mapped[str | None] = mapped_column(String)
-    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     __table_args__ = (UniqueConstraint("subscription_id", "video_id"),)
 
@@ -94,7 +96,7 @@ class Notification(Base):
     thumbnail: Mapped[str | None] = mapped_column(String)
     payload_json: Mapped[str | None] = mapped_column(String)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Setting(Base):
@@ -115,4 +117,4 @@ class NotificationChannel(Base):
     # "use the default set" (see external_notifier.DEFAULT_CHANNEL_EVENTS).
     events_json: Mapped[str | None] = mapped_column(String, nullable=True)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -7,7 +7,6 @@ Each active subscription gets an interval job keyed as "sub_{id}".
 
 import asyncio
 import logging
-from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -16,7 +15,7 @@ from app.config import settings
 from app.db import get_sessionmaker
 from app.models import Download, SeenVideo, Subscription
 from app.services.notifications import create_notification
-from app.utils import find_existing_file, subscription_download_dir, youtube_thumbnail_url
+from app.utils import find_existing_file, subscription_download_dir, youtube_thumbnail_url, utcnow
 from app.ws import emit_download_completed, emit_subscription_checked, emit_subscription_new_video
 
 logger = logging.getLogger(__name__)
@@ -150,11 +149,11 @@ async def check_subscription(subscription_id: int) -> None:
         # Update last_checked_at
         sub = await session.get(Subscription, subscription_id)
         if sub:
-            sub.last_checked_at = datetime.utcnow()
+            sub.last_checked_at = utcnow()
 
         await session.commit()
 
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = utcnow().isoformat()
     await emit_subscription_checked({
         "id": subscription_id,
         "new_count": new_count,

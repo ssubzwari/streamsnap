@@ -361,7 +361,7 @@ async def backup_db() -> dict:
     if not src.exists():
         raise HTTPException(status_code=404, detail=f"Database file not found at {src}")
 
-    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    ts = utcnow().strftime("%Y%m%d-%H%M%S")
     dst = _backup_dir() / f"streamsnap-{ts}.db"
 
     def _do_backup() -> None:
@@ -385,7 +385,7 @@ async def backup_db() -> dict:
         "name": dst.name,
         "path": str(dst),
         "size": dst.stat().st_size,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": utcnow().isoformat(),
     }
 
 

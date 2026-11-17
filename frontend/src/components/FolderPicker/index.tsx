@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { createFolder, listFolder, type FolderListing } from "@/api/files";
 
@@ -13,7 +14,18 @@ const formatError = (e: unknown): string => {
   return raw;
 };
 
-/** Modal shell shared by the folder picker and the file manager's dialogs. */
+/** Modal shell shared by the folder picker and the file manager's dialogs.
+ *
+ *  **Rendered through a portal into `document.body`, which is load-bearing.**
+ *  Callers mount the picker inside whatever markup suits them, and some of
+ *  those wrappers are `<label>` elements. A `<label>` forwards activation to
+ *  its labelled control — here, the picker's own trigger button — so when the
+ *  dialog was an ordinary child of that label, a click on the backdrop closed
+ *  it and then bubbled into the label, which immediately re-opened it. The
+ *  dialog looked impossible to dismiss. Portalling moves it out of that
+ *  subtree, which also keeps it clear of ancestor `overflow`, `transform` and
+ *  stacking contexts.
+ */
 export function Dialog({
   title,
   onClose,
@@ -23,18 +35,28 @@ export function Dialog({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  return (
+  // Escape is the other way every dialog is expected to close.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return createPortal(
     <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.dialog} role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div className={styles.dialog} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className={styles.dialogHead}>
           <span>{title}</span>
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Close">
+          <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -101,7 +123,7 @@ export function FolderBrowser({
   return (
     <div className={styles.browser}>
       <nav className={styles.crumbs} aria-label="Folder path">
-        <button className={styles.crumb} onClick={() => load("")}>
+        <button type="button" className={styles.crumb} onClick={() => load("")}>
           Library
         </button>
         {crumbs.map((part, i) => (
@@ -119,13 +141,13 @@ export function FolderBrowser({
 
       <div className={styles.list}>
         {listing?.parent != null && current !== "" && (
-          <button className={styles.row} onClick={() => load(listing.parent ?? "")}>
+          <button type="button" className={styles.row} onClick={() => load(listing.parent ?? "")}>
             <span className={styles.folderIcon}>↰</span>
             <span>..</span>
           </button>
         )}
         {listing?.entries.map((e) => (
-          <button key={e.path} className={styles.row} onClick={() => load(e.path)}>
+          <button type="button" key={e.path} className={styles.row} onClick={() => load(e.path)}>
             <span className={styles.folderIcon}>▸</span>
             <span className={styles.rowName}>{e.name}</span>
           </button>
@@ -143,7 +165,7 @@ export function FolderBrowser({
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void makeFolder()}
         />
-        <button className={styles.secondaryBtn} onClick={makeFolder} disabled={!newName.trim()}>
+        <button type="button" className={styles.secondaryBtn} onClick={makeFolder} disabled={!newName.trim()}>
           Create
         </button>
       </div>
@@ -152,15 +174,16 @@ export function FolderBrowser({
       {note && <div className={styles.note}>{note}</div>}
 
       <div className={styles.footer}>
-        <button className={styles.secondaryBtn} onClick={onCancel} disabled={busy}>
+        <button type="button" className={styles.secondaryBtn} onClick={onCancel} disabled={busy}>
           Cancel
         </button>
         {defaultLabel && onChooseDefault && (
-          <button className={styles.secondaryBtn} onClick={onChooseDefault} disabled={busy}>
+          <button type="button" className={styles.secondaryBtn} onClick={onChooseDefault} disabled={busy}>
             {defaultLabel}
           </button>
         )}
         <button
+          type="button"
           className={styles.primaryBtn}
           onClick={() => onConfirm(current)}
           disabled={busy || !listing}

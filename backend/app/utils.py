@@ -1,6 +1,24 @@
 import os
 import pathlib
 import re
+from datetime import datetime, timezone
+
+
+def utcnow() -> datetime:
+    """The current UTC time, as a **naive** datetime.
+
+    Replaces ``datetime.utcnow()``, which is deprecated and scheduled for
+    removal: on Python 3.14 every call raises a DeprecationWarning.
+
+    The naive-ness is deliberate, not an oversight. Every timestamp column in
+    :mod:`app.models` is a plain ``DateTime``, so the values stored there carry
+    no offset. Returning an aware datetime here would start writing offsets
+    into those columns, changing the stored string format and making new rows
+    incomparable with every row already in the database. This keeps the stored
+    representation byte-for-byte what it has always been — UTC, no offset —
+    while dropping the deprecated call.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def safe_folder_name(name: str) -> str:
