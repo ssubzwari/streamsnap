@@ -25,6 +25,8 @@ import {
 import { resolveMetadata } from "@/api/metadata";
 import { getSettings, updateSettings } from "@/api/settings";
 import { bulkDeleteDownloads, bulkMoveDownloads, importFiles, rescanLibrary, type RescanReport } from "@/api/library";
+import ActionButton from "@/components/ActionButton";
+import WorkingIndicator from "@/components/WorkingIndicator";
 import {
   checkSubscription,
   createSubscription,
@@ -202,6 +204,15 @@ function ReorderControls({
 // stream is Opus, and FLAC only re-packages that same lossy audio into a much
 // larger file. mp3 is worse still — it has to be re-encoded from the Opus or
 // AAC stream, losing quality on the way.
+/** Shown while a submitted URL is still being resolved — before we even know
+ *  whether it is one video or a whole channel. */
+const CHECKING_MESSAGES = [
+  "Checking the link…",
+  "Asking the site what this is…",
+  "A channel or playlist URL takes longer than a single video.",
+  "Still working — nothing has been queued yet.",
+];
+
 const FORMAT_OPTIONS: Record<string, [string, string][]> = {
   video: [
     ["auto", "Auto"],
@@ -433,8 +444,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // ── Toast / status banner ────────────────────────────────────────────────
-  const [statusToast, setStatusToast] = useState<string | null>(null);
 
   // ── Collapsible section state ────────────────────────────────────────────
   // Persisted to localStorage so the layout sticks across reloads.
@@ -572,6 +581,13 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   const [playlistBusy, setPlaylistBusy] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [playlistLoading, setPlaylistLoading] = useState(false);
+  // True once a submission has been running long enough that a still button
+  // starts to look like a hung one. Keeps quick adds from flashing a panel.
+  const [slowSubmit, setSlowSubmit] = useState(false);
+  // Downloads that finished in the last few seconds. A download that completes
+  // long after you queued it has no button to report back to, so the row it
+  // lands in is what announces it — instead of a card covering the page.
+  const [justDone, setJustDone] = useState<Set<number>>(new Set());
   const [resumingStalled, setResumingStalled] = useState(false);
   const [pausingAll, setPausingAll] = useState(false);
   const [downloadsPaused, setDownloadsPaused] = useState<{
@@ -623,13 +639,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       .catch(console.error);
   }, []);
 
-  // Auto-dismiss the status toast (used by Copy URL feedback).
-  useEffect(() => {
-    if (!statusToast) return;
-    const t = setTimeout(() => setStatusToast(null), 2000);
-    return () => clearTimeout(t);
-  }, [statusToast]);
-
   // ── WebSocket listeners ───────────────────────────────────────────────────
   useEffect(() => {
     const socket = getSocket();
@@ -642,12 +651,25 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     });
     socket.on(WS_EVENTS.DOWNLOAD_COMPLETED, (data: DownloadInfo) => {
       dispatchDownloads({ type: "UPDATE", patch: data });
+      setJustDone((prev) => new Set(prev).add(data.id));
+      window.setTimeout(() => {
+        setJustDone((prev) => {
+          const next = new Set(prev);
+          next.delete(data.id);
+          return next;
+        });
+      }, 2600);
     });
     socket.on(WS_EVENTS.DOWNLOAD_FAILED, (data: DownloadFailedPayload) => {
       dispatchDownloads({
         type: "UPDATE",
         patch: { id: data.id, status: "failed", error_message: data.error },
       });
+    });
+    socket.on(WS_EVENTS.DOWNLOAD_REMOVED, (data: { id: number; reason: string }) => {
+      // The video no longer exists on the site, so the row goes with it. The
+      // end-of-batch notification in the bell says what was dropped and why.
+      dispatchDownloads({ type: "REMOVE", id: data.id });
     });
     socket.on(WS_EVENTS.DOWNLOAD_CANCELED, (data: DownloadCanceledPayload) => {
       dispatchDownloads({
@@ -673,6 +695,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       socket.off(WS_EVENTS.DOWNLOAD_UPDATED);
       socket.off(WS_EVENTS.DOWNLOAD_COMPLETED);
       socket.off(WS_EVENTS.DOWNLOAD_FAILED);
+      socket.off(WS_EVENTS.DOWNLOAD_REMOVED);
       socket.off(WS_EVENTS.DOWNLOAD_CANCELED);
       socket.off(WS_EVENTS.DOWNLOADS_PAUSED);
       socket.off(WS_EVENTS.SUBSCRIPTION_CHECKED);
@@ -797,9 +820,9 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   };
 
   // ── Handlers: download submission ─────────────────────────────────────────
-  const handleDownload = async () => {
+  const handleDownload = async (): Promise<boolean> => {
     const trimmed = url.trim();
-    if (!trimmed) return;
+    if (!trimmed) return false;
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -816,6 +839,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         output_folder: outputFolder || undefined,
       });
       setUrl("");
+      return true;
     } catch (err) {
       let message = String(err);
       try {
@@ -837,7 +861,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
             entries: preview.entries,
             allEntries: preview.entries,
           });
-          return;
+          return false;   // a dialog opened; nothing finished yet
         } catch (playlistErr) {
           let plMsg = String(playlistErr);
           try {
@@ -845,21 +869,22 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
             if (body?.detail) plMsg = body.detail;
           } catch {}
           setSubmitError(plMsg);
-          return;
+          return false;
         } finally {
           setPlaylistLoading(false);
         }
       }
 
       setSubmitError(message);
+      throw err;          // let the button show the failure
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSubscribe = async () => {
+  const handleSubscribe = async (): Promise<boolean> => {
     const trimmed = url.trim();
-    if (!trimmed) return;
+    if (!trimmed) return false;
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -884,7 +909,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
           allEntries: preview.entries,
           subDraft: draft,
         });
-        return;
+        return false;   // a dialog opened; nothing finished yet
       }
 
       const sub = await createSubscription({
@@ -894,6 +919,7 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       });
       dispatchSubs({ type: "ADD", sub });
       setUrl("");
+      return true;
     } catch (err) {
       let message = String(err);
       try {
@@ -901,11 +927,21 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         if (body?.detail) message = body.detail;
       } catch {}
       setSubmitError(message);
+      throw err;          // let the button show the failure
     } finally {
       setIsSubmitting(false);
       setPlaylistLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!isSubmitting) {
+      setSlowSubmit(false);
+      return;
+    }
+    const t = window.setTimeout(() => setSlowSubmit(true), 800);
+    return () => window.clearTimeout(t);
+  }, [isSubmitting]);
 
   const handleUrlKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") handleDownload();
@@ -1259,21 +1295,14 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     }
   };
 
-  const handleCopyUrls = () => {
-    const allUrls = downloads.map((d) => d.url).join("\n");
-    copyText(allUrls).catch(console.error);
-    setStatusToast(`Copied ${downloads.length} URL(s) to clipboard`);
+  // These report their outcome on the button that was pressed (ActionButton),
+  // so they only have to do the work and let a failure propagate.
+  const handleCopyUrls = async () => {
+    await copyText(downloads.map((d) => d.url).join("\n"));
   };
 
-  // Copy a single URL (download row or subscription row) and show feedback.
-  const handleCopyUrl = async (target: string, label: string) => {
-    try {
-      await copyText(target);
-      setStatusToast(`Copied ${label} URL`);
-    } catch (err) {
-      console.error(err);
-      setStatusToast("Copy failed — clipboard blocked");
-    }
+  const handleCopyUrl = async (target: string) => {
+    await copyText(target);
   };
 
   // Trigger a browser save of a completed download. Replaces the legacy
@@ -1416,18 +1445,8 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     }
   };
 
-  const [artworkSubId, setArtworkSubId] = useState<number | null>(null);
   const handleRegenArtwork = async (id: number) => {
-    setArtworkSubId(id);
-    try {
-      await regenerateArtwork(id);
-      setStatusToast("Artwork queued — poster, background, logo and banner will land in the show folder");
-    } catch (err) {
-      console.error(err);
-      setStatusToast("Could not fetch artwork");
-    } finally {
-      setArtworkSubId(null);
-    }
+    await regenerateArtwork(id);
   };
 
   // ── TMDB match picker ─────────────────────────────────────────────────────
@@ -1481,9 +1500,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       setTmdbSub(null);
       if (match) {
         await regenerateArtwork(updated.id);
-        setStatusToast(`Artwork queued from TMDB — ${match.name}`);
-      } else {
-        setStatusToast("TMDB match cleared — artwork falls back to the title search");
       }
     } catch (err) {
       console.error(err);
@@ -1533,20 +1549,24 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
               onKeyDown={handleUrlKeyDown}
               aria-label="Video URL"
             />
-            <button
+            <ActionButton
               className={styles.downloadBtn}
-              onClick={handleDownload}
+              onAction={handleDownload}
               disabled={isSubmitting || !url.trim()}
+              busyLabel="Adding…"
+              doneLabel="Added"
             >
-              {isSubmitting ? "Adding\u2026" : "Download"}
-            </button>
-            <button
+              Download
+            </ActionButton>
+            <ActionButton
               className={styles.subscribeBtn}
-              onClick={handleSubscribe}
+              onAction={handleSubscribe}
               disabled={isSubmitting || !url.trim()}
+              busyLabel="Subscribing…"
+              doneLabel="Subscribed"
             >
               Subscribe
-            </button>
+            </ActionButton>
           </div>
 
           {/* ── Subscribe-only toggles (ignored by the Download button) ── */}
@@ -1639,10 +1659,11 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
             </label>
           </div>
 
-          {playlistLoading && (
-            <p className={styles.loadingMsg}>
-              Reading playlist… large channels can take a minute.
-            </p>
+          {(playlistLoading || slowSubmit) && (
+            <WorkingIndicator
+              label={playlistLoading ? "Reading playlist" : "Checking link"}
+              messages={playlistLoading ? undefined : CHECKING_MESSAGES}
+            />
           )}
           {submitError && (
             <p className={styles.errorMsg}>{submitError}</p>
@@ -1773,9 +1794,13 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                         <button className={styles.toolBtn} onClick={handleExportUrls}>
                           Export URLs
                         </button>
-                        <button className={styles.toolBtn} onClick={handleCopyUrls}>
+                        <ActionButton
+                          className={styles.toolBtn}
+                          onAction={handleCopyUrls}
+                          doneLabel="Copied"
+                        >
                           Copy URLs
-                        </button>
+                        </ActionButton>
                       </div>
                     </div>
                   </div>
@@ -2191,7 +2216,13 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                           </thead>
                           <tbody>
                             {dlsInGroup.map((d) => (
-                              <tr key={d.id} className={d.status === "failed" ? styles.rowFailed : ""}>
+                              <tr
+                              key={d.id}
+                              className={[
+                                d.status === "failed" ? styles.rowFailed : "",
+                                justDone.has(d.id) ? styles.rowJustDone : "",
+                              ].filter(Boolean).join(" ")}
+                            >
                                 <td>
                                   <input
                                     type="checkbox"
@@ -2275,13 +2306,14 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                         </button>
                                       </>
                                     )}
-                                    <button
+                                    <ActionButton
                                       className={styles.iconBtn}
-                                      onClick={() => handleCopyUrl(d.url, "video")}
+                                      onAction={() => handleCopyUrl(d.url)}
                                       title="Copy video URL"
+                                      doneLabel={null}
                                     >
                                       <CopyIcon />
-                                    </button>
+                                    </ActionButton>
                                     {(d.status === "failed" || d.status === "canceled") && (
                                       <button
                                         className={styles.iconBtn}
@@ -2352,7 +2384,13 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                         </thead>
                         <tbody>
                           {groupedCompleted.manualDownloads.map((d) => (
-                            <tr key={d.id} className={d.status === "failed" ? styles.rowFailed : ""}>
+                            <tr
+                              key={d.id}
+                              className={[
+                                d.status === "failed" ? styles.rowFailed : "",
+                                justDone.has(d.id) ? styles.rowJustDone : "",
+                              ].filter(Boolean).join(" ")}
+                            >
                               <td>
                                 <input
                                   type="checkbox"
@@ -2436,13 +2474,14 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                                       </button>
                                     </>
                                   )}
-                                  <button
+                                  <ActionButton
                                     className={styles.iconBtn}
-                                    onClick={() => handleCopyUrl(d.url, "video")}
+                                    onAction={() => handleCopyUrl(d.url)}
                                     title="Copy video URL"
+                                    doneLabel={null}
                                   >
                                     <CopyIcon />
-                                  </button>
+                                  </ActionButton>
                                   <button
                                     className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
                                     onClick={() => handleDelete(d.id)}
@@ -2674,21 +2713,22 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                         >
                           <RefreshIcon />
                         </button>
-                        <button
+                        <ActionButton
                           className={styles.iconBtn}
-                          onClick={() => handleCopyUrl(s.url, "playlist")}
+                          onAction={() => handleCopyUrl(s.url)}
                           title="Copy playlist URL"
+                          doneLabel={null}
                         >
                           <CopyIcon />
-                        </button>
-                        <button
+                        </ActionButton>
+                        <ActionButton
                           className={styles.iconBtn}
-                          onClick={() => handleRegenArtwork(s.id)}
-                          disabled={artworkSubId === s.id}
-                          title={artworkSubId === s.id ? "Fetching…" : "Fetch artwork (poster, background, logo, banner, square, seasons)"}
+                          onAction={() => handleRegenArtwork(s.id)}
+                          title="Fetch artwork (poster, background, logo, banner, square, seasons)"
+                          doneLabel={null}
                         >
                           <ImageIcon />
-                        </button>
+                        </ActionButton>
                         <button
                           className={styles.iconBtn}
                           onClick={() => {
@@ -2738,12 +2778,6 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
         </section>
       </main>
 
-      {/* ── Status toast (Copy URL feedback, etc.) ── */}
-      {statusToast && (
-        <div className={styles.statusToast} role="status">
-          {statusToast}
-        </div>
-      )}
 
       {/* Settings modal lives in App.tsx so it's reachable from the Media
           tab too — keeping it here would mean unmounting it whenever the

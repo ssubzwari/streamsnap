@@ -192,21 +192,6 @@
 
 /* ── Status toast (Copy URL feedback, etc.) ─────────────────────────────────── */
 
-.statusToast {
-  position: fixed;
-  bottom: var(--space-5);
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--color-surface-hi);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-sm);
-  box-shadow: var(--shadow-pop);
-  z-index: 100;
-  animation: toastIn var(--dur-base) var(--ease-out);
-}
 
 @keyframes toastIn {
   from { opacity: 0; transform: translate(-50%, 8px); }
@@ -1958,4 +1943,21 @@
   min-width: 24px;
   min-height: 24px;
   line-height: 1;
+}
+
+/* A download that finishes minutes after it was queued has no button to report
+   back to, so its own row announces it: one sweep of accent colour as it lands
+   in Completed. Replaces the card that used to cover the corner of the page. */
+.rowJustDone {
+  animation: rowLanded 2.4s var(--ease-out);
+}
+
+@keyframes rowLanded {
+  0%  { background: color-mix(in srgb, var(--color-success) 26%, transparent); }
+  25% { background: color-mix(in srgb, var(--color-success) 20%, transparent); }
+  100% { background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rowJustDone { animation: none; }
 }

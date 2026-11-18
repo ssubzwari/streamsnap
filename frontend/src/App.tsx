@@ -6,7 +6,7 @@ import Settings from "@/pages/Settings";
 import Footer from "@/components/Footer";
 import { PlayerProvider } from "@/player/PlayerContext";
 import PlayerWindow, { PlayerNavButton } from "@/player/PlayerWindow";
-import ToastContainer from "@/components/Toast";
+import ActivityBell from "@/components/ActivityBell";
 import Background from "@/theme/Background";
 import { ThemeProvider } from "@/theme/ThemeContext";
 import { UiPrefsProvider } from "@/ui/UiPrefsContext";
@@ -106,6 +106,7 @@ export default function App() {
               </>
             )}
             <PlayerNavButton className={styles.settingsBtn} />
+            <ActivityBell className={styles.settingsBtn} />
             <button
               className={styles.settingsBtn}
               onClick={() => setSettingsOpen(true)}
@@ -130,7 +131,6 @@ export default function App() {
       </div>
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
       <PlayerWindow />
-      <ToastContainer />
       </PlayerProvider>
       </UiPrefsProvider>
     </ThemeProvider>

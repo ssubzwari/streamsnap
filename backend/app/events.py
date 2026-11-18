@@ -7,6 +7,10 @@ DOWNLOAD_COMPLETED = "download:completed"
 DOWNLOAD_FAILED = "download:failed"
 DOWNLOAD_CANCELED = "download:canceled"
 
+# A row the queue deleted on its own — the video is gone from the site, so the
+# download can never succeed and there is nothing for the user to retry.
+DOWNLOAD_REMOVED = "download:removed"
+
 DOWNLOADS_PAUSED = "downloads:paused"
 
 SUBSCRIPTION_CHECKED = "subscription:checked"
@@ -32,6 +36,12 @@ class DownloadFailedPayload:
 @dataclass
 class DownloadCanceledPayload:
     id: int
+
+
+@dataclass
+class DownloadRemovedPayload:
+    id: int
+    reason: str
 
 
 @dataclass

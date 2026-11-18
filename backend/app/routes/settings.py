@@ -135,6 +135,7 @@ ALLOWED_KEYS = {
     # Download
     "max_concurrent_downloads",
     "bot_check_skip",
+    "auto_remove_unavailable",
     "bot_check_cooldown",
     "concurrent_fragments",
     "retries",

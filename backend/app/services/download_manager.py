@@ -24,6 +24,7 @@ from app.db import get_sessionmaker
 from app.events import DownloadCanceledPayload, DownloadFailedPayload, DownloadUpdatedPayload
 from app.ws import (
     emit_download_canceled,
+    emit_download_removed,
     emit_download_completed,
     emit_download_failed,
     emit_download_updated,
@@ -48,6 +49,30 @@ _BOT_CHECK_MARKERS = (
 def _is_bot_check(message: str) -> bool:
     m = (message or "").lower()
     return any(marker in m for marker in _BOT_CHECK_MARKERS)
+
+
+# Errors that mean the video is **gone from the site**, not that the download
+# went wrong. Retrying can never help: the account was terminated, the uploader
+# removed it, or it was made private. Left alone these pile up as permanent red
+# rows in a playlist nobody can clear without clicking each one.
+_UNAVAILABLE_MARKERS = (
+    "video unavailable",
+    "account associated with this video has been terminated",
+    "this video has been removed",
+    "removed by the uploader",
+    "this video is private",
+    "private video",
+    "video has been removed for violating",
+    "this video is no longer available",
+    "content isn't available",
+    "is not available in your country",
+    "this video is unavailable",
+)
+
+
+def _is_unavailable(message: str) -> bool:
+    m = (message or "").lower()
+    return any(marker in m for marker in _UNAVAILABLE_MARKERS)
 
 
 # ── Bot-check back-off ────────────────────────────────────────────────────────
@@ -111,6 +136,11 @@ class DownloadManager:
         # Bot-check back-off. Attempts are per download and deliberately not
         # cleared by _cleanup(), which also runs on the deferral path — doing
         # so would reset the count every time and defer the same video forever.
+        # Videos deleted because the site no longer has them. Collected rather
+        # than announced one by one: a playlist can lose a dozen at once, and a
+        # dozen separate alerts is the noise this is meant to remove.
+        self._removed_unavailable: list[dict] = []
+
         self._bot_check_attempts: dict[int, int] = {}
         self._consecutive_bot_checks: int = 0
         self._cooldown_until: float = 0.0
@@ -478,6 +508,10 @@ class DownloadManager:
 
                 picked = await self._pick_next_job()
                 if picked is None:
+                    # Nothing left to run — the end of a playlist, or of a
+                    # single download. Report anything dropped on the way.
+                    if self._running == 0:
+                        await self._flush_unavailable_summary()
                     break
                 job_id, job_url, job_fmt, job_dir = picked
 
@@ -657,6 +691,12 @@ class DownloadManager:
                     await self._handle_bot_check(did, error)
                     continue
 
+                # The video is gone from the site. No retry can fix that, so
+                # the row goes rather than sitting there red forever.
+                if _is_unavailable(error) and await self._auto_remove_unavailable():
+                    await self._remove_unavailable(did, error)
+                    continue
+
                 await self._update_db(did, status="failed", error_message=error)
                 await emit_download_failed(dataclasses.asdict(DownloadFailedPayload(id=did, error=error)))
                 download = await self._get_download(did)
@@ -677,12 +717,89 @@ class DownloadManager:
                     await emit_download_canceled(dataclasses.asdict(DownloadCanceledPayload(id=did)))
                 self._cleanup(did)
 
+    # ── Videos the site no longer has ─────────────────────────────────────
+
+    async def _auto_remove_unavailable(self) -> bool:
+        """`auto_remove_unavailable` — on unless explicitly turned off."""
+        return (await self._setting("auto_remove_unavailable")) != "false"
+
+    @staticmethod
+    def _unavailable_reason(error: str) -> str:
+        """The short human reason, for the summary the user actually reads."""
+        m = (error or "").lower()
+        if "terminated" in m:
+            return "channel terminated"
+        if "private" in m:
+            return "made private"
+        if "removed by the uploader" in m or "this video has been removed" in m:
+            return "removed by the uploader"
+        if "violating" in m:
+            return "removed by the site"
+        if "country" in m:
+            return "not available in your region"
+        return "no longer available"
+
+    async def _remove_unavailable(self, download_id: int, error: str) -> None:
+        """Delete the row and remember it for the end-of-batch summary."""
+        from app.models import Download
+
+        download = await self._get_download(download_id)
+        title = (download.title or download.url) if download else f"download #{download_id}"
+        reason = self._unavailable_reason(error)
+
+        SessionLocal = get_sessionmaker()
+        async with SessionLocal() as session:
+            row = await session.get(Download, download_id)
+            if row is not None:
+                await session.delete(row)
+                await session.commit()
+
+        self._removed_unavailable.append({"title": title, "reason": reason})
+        await emit_download_removed({"id": download_id, "reason": reason})
+        self._cleanup(download_id)
+        logger.info("removed unavailable download %s (%s)", download_id, reason)
+
+    async def _flush_unavailable_summary(self) -> None:
+        """Report what was dropped, once the queue has nothing left to run.
+
+        Waiting for the drain is what turns "a dozen alerts" into one, and it
+        lands naturally at the end of a playlist. A single download reaches the
+        same point immediately after it fails, so it is reported straight away.
+        """
+        if not self._removed_unavailable:
+            return
+        removed, self._removed_unavailable = self._removed_unavailable, []
+
+        from app.services.notifications import create_notification
+
+        lines = [f"• {item['title']} — {item['reason']}" for item in removed[:20]]
+        if len(removed) > 20:
+            lines.append(f"…and {len(removed) - 20} more.")
+        count = len(removed)
+        await create_notification(
+            # Not "completed": these downloads did not happen. Filing it under
+            # failed also means it survives turning off the chatty
+            # completed-download notifications, and the bell flags it.
+            kind="failed",
+            title=(
+                f"Removed {count} unavailable video{'' if count == 1 else 's'}"
+            ),
+            body=(
+                ("This video was" if count == 1 else f"These {count} videos were")
+                + " taken off the site, so there is nothing left to download and "
+                "the entry has been removed from the queue:\n\n"
+                + "\n".join(lines)
+            ),
+        )
+
     # ── Bot-check back-off ────────────────────────────────────────────────
 
     def _clear_bot_check_state(self) -> None:
         self._bot_check_attempts.clear()
         self._consecutive_bot_checks = 0
         self._cooldown_until = 0.0
+        # Pending removals belong to the run that produced them.
+        self._removed_unavailable.clear()
 
     async def _setting(self, key: str) -> str | None:
         from app.models import Setting

@@ -90,6 +90,11 @@ full card while queued rows shrink to a single line.
 - **Queue control** — live-applied concurrency (default 1), drag-to-reorder / "move to top" /
   nudge, **Pause all**, **Resume incomplete** (re-queues downloads a restart left mid-flight —
   yt-dlp resumes from the partial file)
+- **Drops videos that no longer exist** — a terminated channel, a video the uploader
+  deleted, or one made private can never be downloaded, so StreamSnap removes the entry
+  instead of leaving a permanent red row in your playlist. It tells you what it dropped
+  and why, once, when the playlist finishes (or straight away for a single video). Turn it
+  off in **Settings → Download** to keep them as failed downloads.
 - **Keeps going when YouTube asks for sign-in** — a "Sign in to confirm you're not a bot"
   block is usually about one video, so StreamSnap waits (30s by default), moves that video
   to the back of the queue and carries on with the next one, retrying it up to three times
@@ -339,6 +344,7 @@ The full REST endpoint list lives in
 | `download:failed` | Worker exception |
 | `download:canceled` | User cancels |
 | `downloads:paused` | Queue paused/resumed (manual, or an account-wide bot block — see below) |
+| `download:removed` | A video was dropped because the site no longer has it |
 | `subscription:checked` | APScheduler poll completed |
 | `subscription:new_video` | New video detected (fires before auto-download enqueues) |
 | `notification:created` | Any notification (drives toasts + browser alerts) |

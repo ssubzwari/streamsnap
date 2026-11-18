@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import pytest
 
@@ -40,15 +41,38 @@ def _clean_db_between_tests():
         from app.db import get_sessionmaker, init_db
         from app.models import Download
 
+        # Quiesce the queue first. Tests that drive the worker hard (the
+        # bot-check ones run with a zero cooldown) can still be mid-write when
+        # the next test starts wiping, and SQLite answers a concurrent writer
+        # with "database is locked" rather than waiting.
+        from app.services.download_manager import download_manager
+
+        try:
+            await download_manager.stop()
+        except Exception:
+            pass
+
         await init_db()
         async with get_sessionmaker()() as session:
             await session.execute(delete(Download))
             await session.commit()
 
-    try:
-        asyncio.run(wipe())
-    finally:
-        _dispose_engine()
+    # One writer losing a race to another is transient by definition, so retry
+    # briefly rather than failing a test for a reason that has nothing to do
+    # with what it asserts.
+    last: Exception | None = None
+    for attempt in range(5):
+        try:
+            asyncio.run(wipe())
+            last = None
+            break
+        except Exception as exc:  # noqa: BLE001 — retried below, re-raised after
+            last = exc
+            time.sleep(0.2 * (attempt + 1))
+        finally:
+            _dispose_engine()
+    if last is not None:
+        raise last
 
     yield
 

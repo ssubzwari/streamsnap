@@ -4,6 +4,7 @@ from app.config import settings
 from app.events import (
     DOWNLOAD_ADDED,
     DOWNLOAD_CANCELED,
+    DOWNLOAD_REMOVED,
     DOWNLOAD_COMPLETED,
     DOWNLOAD_FAILED,
     DOWNLOAD_UPDATED,
@@ -54,6 +55,10 @@ async def emit_download_failed(payload: dict) -> None:
 
 async def emit_download_canceled(payload: dict) -> None:
     await sio.emit(DOWNLOAD_CANCELED, payload)
+
+
+async def emit_download_removed(payload: dict) -> None:
+    await sio.emit(DOWNLOAD_REMOVED, payload)
 
 
 async def emit_downloads_paused(payload: dict) -> None:

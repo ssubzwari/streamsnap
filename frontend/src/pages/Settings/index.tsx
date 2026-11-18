@@ -78,6 +78,7 @@ interface SettingsState {
   // Download
   max_concurrent_downloads: string;
   bot_check_skip: string;
+  auto_remove_unavailable: string;
   bot_check_cooldown: string;
   concurrent_fragments: string;
   retries: string;
@@ -139,6 +140,7 @@ const DEFAULTS: SettingsState = {
   pad_episode_numbers: "true",
   max_concurrent_downloads: "1",
   bot_check_skip: "true",
+  auto_remove_unavailable: "true",
   bot_check_cooldown: "30",
   concurrent_fragments: "1",
   retries: "10",
@@ -958,6 +960,24 @@ export default function Settings({ onClose }: Props) {
                 <Row>
                   <Toggle label="Continue Partial Downloads" checked={bool("continue_partial")} onChange={() => toggle("continue_partial")} />
                   <Toggle label="No Overwrites" checked={bool("no_overwrites")} onChange={() => toggle("no_overwrites")} />
+                </Row>
+
+                <SectionTitle>Videos that no longer exist</SectionTitle>
+                <p className={styles.infoNote}>
+                  When a video has been taken off the site — the channel was
+                  terminated, the uploader deleted it, or it was made private — no
+                  retry can bring it back. StreamSnap removes the entry instead of
+                  leaving a permanent red row in the queue, and tells you what it
+                  dropped once the playlist finishes (or straight away for a single
+                  video).
+                </p>
+                <Row>
+                  <Toggle
+                    label="Remove videos the site no longer has"
+                    hint="Turn off to keep them in the list as failed downloads."
+                    checked={s.auto_remove_unavailable !== "false"}
+                    onChange={() => toggle("auto_remove_unavailable")}
+                  />
                 </Row>
 
                 <SectionTitle>When YouTube asks for sign-in</SectionTitle>

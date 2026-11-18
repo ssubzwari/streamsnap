@@ -1,0 +1,106 @@
+/* Outcome shown on the button that caused it, instead of a card in the corner
+   of the screen. The button keeps whatever class the caller passed, so it
+   still looks like the button it was — this only layers state on top. */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  transition:
+    background var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.label {
+  display: inline-block;
+}
+
+/* ── Busy ──────────────────────────────────────────────────────────────── */
+
+.spinner {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  opacity: 0.85;
+  animation: spin 620ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.busy {
+  cursor: progress;
+}
+
+/* ── Done ──────────────────────────────────────────────────────────────── */
+
+.done {
+  background: var(--color-success) !important;
+  border-color: var(--color-success) !important;
+  color: #fff !important;
+}
+
+.tick {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* Drawn rather than popped in: the stroke writes itself on. */
+  stroke-dasharray: 18;
+  stroke-dashoffset: 18;
+  animation: draw var(--dur-slow) var(--ease-out) forwards;
+}
+
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* One ring expanding out of the button — the "it landed" cue, in place of a
+   card sliding in somewhere else. */
+.ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid var(--color-success);
+  pointer-events: none;
+  animation: ripple 620ms var(--ease-out) forwards;
+}
+
+@keyframes ripple {
+  from { opacity: 0.65; transform: scale(1); }
+  to   { opacity: 0;    transform: scale(1.35); }
+}
+
+/* ── Error ─────────────────────────────────────────────────────────────── */
+
+.error {
+  background: var(--color-error) !important;
+  border-color: var(--color-error) !important;
+  color: #fff !important;
+  animation: shake var(--dur-slow) var(--ease-out);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-3px); }
+  75%      { transform: translateX(3px); }
+}
+
+/* The colour change alone still reports the outcome with motion off. */
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 1.4s; }
+  .tick { animation: none; stroke-dashoffset: 0; }
+  .ring { display: none; }
+  .error { animation: none; }
+}

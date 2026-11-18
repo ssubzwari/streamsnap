@@ -49,6 +49,12 @@ export interface DownloadCanceledPayload {
   id: number;
 }
 
+/** A row the queue deleted itself: the video is gone from the site. */
+export interface DownloadRemovedPayload {
+  id: number;
+  reason: string;
+}
+
 export interface DownloadsPausedPayload {
   paused: boolean;
   reason: string | null;
@@ -103,6 +109,7 @@ export const WS_EVENTS = {
   DOWNLOAD_COMPLETED: "download:completed",
   DOWNLOAD_FAILED: "download:failed",
   DOWNLOAD_CANCELED: "download:canceled",
+  DOWNLOAD_REMOVED: "download:removed",
   DOWNLOADS_PAUSED: "downloads:paused",
   SUBSCRIPTION_CHECKED: "subscription:checked",
   SUBSCRIPTION_NEW_VIDEO: "subscription:new_video",
