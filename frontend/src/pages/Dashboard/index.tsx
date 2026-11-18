@@ -2811,6 +2811,20 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
                 ))}
               </ul>
             )}
+            {(libraryDialog.report.attributed?.length ?? 0) > 0 && (
+              <>
+                <p>
+                  Moved {libraryDialog.report.attributed.length} file
+                  {libraryDialog.report.attributed.length === 1 ? "" : "s"} out of “Other
+                  Completed Downloads” and in with the subscription whose folder they are in.
+                </p>
+                <ul className={styles.libraryList}>
+                  {libraryDialog.report.attributed.slice(0, 200).map((a) => (
+                    <li key={a.id}>{a.title ?? `#${a.id}`}</li>
+                  ))}
+                </ul>
+              </>
+            )}
             {libraryDialog.report.unlinked.length > 0 ? (
               <>
                 <p>

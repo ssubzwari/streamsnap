@@ -10,6 +10,9 @@ export interface LibraryResult {
 export interface RescanReport {
   relinked: { id: number; title: string | null; path: string }[];
   missing: { id: number; title: string | null }[];
+  /** Rows that sat in a subscription's folder but were not linked to it, and
+   *  now are — so they group with that show instead of "Other". */
+  attributed: { id: number; title: string | null; subscription_id: number }[];
   unlinked: string[];
 }
 
