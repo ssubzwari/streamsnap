@@ -24,7 +24,7 @@ import {
 } from "@/api/downloads";
 import { resolveMetadata } from "@/api/metadata";
 import { getSettings, updateSettings } from "@/api/settings";
-import { bulkDeleteDownloads, bulkMoveDownloads, importFiles, rescanLibrary, type RescanReport } from "@/api/library";
+import { bulkDeleteDownloads, bulkMoveDownloads, exportPlaylist, importFiles, rescanLibrary, type PlaylistResult, type RescanReport } from "@/api/library";
 import ActionButton from "@/components/ActionButton";
 import WorkingIndicator from "@/components/WorkingIndicator";
 import {
@@ -588,6 +588,18 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
   // long after you queued it has no button to report back to, so the row it
   // lands in is what announces it — instead of a card covering the page.
   const [justDone, setJustDone] = useState<Set<number>>(new Set());
+
+  // ── Playlist export ──────────────────────────────────────────────────────
+  const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [plName, setPlName] = useState("StreamSnap playlist");
+  const [plFolder, setPlFolder] = useState("");
+  const [plRelative, setPlRelative] = useState(false);
+  // Plex in Docker sees the same folder under a different mount, and a
+  // playlist naming StreamSnap's paths imports as an empty one.
+  const [plFrom, setPlFrom] = useState("");
+  const [plTo, setPlTo] = useState("");
+  const [plResult, setPlResult] = useState<PlaylistResult | null>(null);
+  const [plError, setPlError] = useState<string | null>(null);
   const [resumingStalled, setResumingStalled] = useState(false);
   const [pausingAll, setPausingAll] = useState(false);
   const [downloadsPaused, setDownloadsPaused] = useState<{
@@ -942,6 +954,29 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
     const t = window.setTimeout(() => setSlowSubmit(true), 800);
     return () => window.clearTimeout(t);
   }, [isSubmitting]);
+
+  const runPlaylistExport = async () => {
+    setPlError(null);
+    setPlResult(null);
+    try {
+      setPlResult(await exportPlaylist({
+        ids: getVisibleCompletedIds().filter((id) => selectedCompleted.has(id)),
+        name: plName,
+        folder: plFolder || null,
+        relative: plRelative,
+        prefixFrom: plFrom,
+        prefixTo: plTo,
+      }));
+    } catch (e) {
+      let msg = String(e).replace(/^ApiError: /, "");
+      try {
+        const body = JSON.parse(msg);
+        if (body?.detail) msg = body.detail;
+      } catch {}
+      setPlError(msg);
+      throw e;
+    }
+  };
 
   const handleUrlKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") handleDownload();
@@ -2091,6 +2126,18 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
             </button>
             <button
               className={styles.ghostBtn}
+              disabled={selectedCompleted.size === 0}
+              onClick={() => {
+                setPlResult(null);
+                setPlError(null);
+                setPlaylistOpen(true);
+              }}
+              title="Write an .m3u8 playlist file for the selected files, to import elsewhere"
+            >
+              Export playlist…
+            </button>
+            <button
+              className={styles.ghostBtn}
               disabled={selectedCompleted.size === 0 || libraryBusy}
               onClick={() => setLibraryDialog({ kind: "move", ids: Array.from(selectedCompleted) })}
               title="Move the selected files to another folder in the download folder"
@@ -2782,6 +2829,120 @@ export default function Dashboard({ settingsOpen: _settingsOpen, onCloseSettings
       {/* Settings modal lives in App.tsx so it's reachable from the Media
           tab too — keeping it here would mean unmounting it whenever the
           user switches tabs, breaking the gear button on Media. */}
+
+      {/* ── Export playlist ── */}
+      {playlistOpen && (
+        <Dialog title="Export playlist" onClose={() => setPlaylistOpen(false)}>
+          <div className={styles.libraryBody}>
+            <p className={styles.plNote}>
+              Writes an <code>.m3u8</code> listing the{" "}
+              {getVisibleCompletedIds().filter((id) => selectedCompleted.has(id)).length}{" "}
+              selected file(s), with each track’s artist, title and album taken from
+              the files themselves.
+            </p>
+
+            <label className={styles.plField}>
+              Playlist name
+              <input
+                className={styles.plInput}
+                value={plName}
+                onChange={(e) => setPlName(e.target.value)}
+                placeholder="StreamSnap playlist"
+              />
+            </label>
+
+            <div className={styles.plField}>
+              <span>Save it in</span>
+              <FolderPicker
+                value={plFolder}
+                onChange={setPlFolder}
+                defaultLabel="Library root"
+                label="Playlist folder"
+              />
+            </div>
+
+            <p className={styles.plNote}>
+              <strong>Plex has no built-in import for music playlists</strong> — you
+              load an <code>.m3u8</code> with a tool such as ListPorter or Plex
+              Playlist Importer, or through the API. Those match on the path, so it
+              has to be the path <em>Plex</em> sees. If Plex runs in Docker it has
+              this folder mounted somewhere else, and the two boxes below rewrite the
+              paths to match. Leave them empty if Plex sees the same paths.
+            </p>
+
+            <div className={styles.plRow}>
+              <label className={styles.plField}>
+                StreamSnap sees
+                <input
+                  className={styles.plInput}
+                  value={plFrom}
+                  onChange={(e) => setPlFrom(e.target.value)}
+                  placeholder="/downloads"
+                />
+              </label>
+              <label className={styles.plField}>
+                Plex sees
+                <input
+                  className={styles.plInput}
+                  value={plTo}
+                  onChange={(e) => setPlTo(e.target.value)}
+                  placeholder="/data/music"
+                />
+              </label>
+            </div>
+
+            <label className={styles.plCheck}>
+              <input
+                type="checkbox"
+                checked={plRelative}
+                onChange={() => setPlRelative((v) => !v)}
+              />
+              Use paths relative to the playlist file
+              <span className={styles.plHint}>
+                Keeps the folder portable, but most Plex import tools want absolute
+                paths — leave this off for Plex.
+              </span>
+            </label>
+
+            {plError && <p className={styles.errorMsg}>{plError}</p>}
+
+            {plResult && (
+              <div className={styles.plResult}>
+                <strong>
+                  Wrote {plResult.tracks} track{plResult.tracks === 1 ? "" : "s"} to{" "}
+                  {plResult.path}
+                </strong>
+                {plResult.cover && <div>Cover image: {plResult.cover}</div>}
+                {plResult.skipped.length > 0 && (
+                  <div>
+                    Skipped {plResult.skipped.length} file(s) that are no longer on
+                    disk.
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className={styles.libraryFoot}>
+              <button
+                type="button"
+                className={styles.ghostBtn}
+                onClick={() => setPlaylistOpen(false)}
+              >
+                Close
+              </button>
+              <ActionButton
+                className={styles.libraryPrimary}
+                onAction={runPlaylistExport}
+                busyLabel="Writing…"
+                doneLabel="Written"
+                disabled={!plName.trim()}
+              >
+                Write playlist
+              </ActionButton>
+            </div>
+          </div>
+        </Dialog>
+      )}
 
       {/* ── Library dialogs: bulk move / delete / rescan ── */}
       {libraryDialog && libraryDialog.kind === "move" && (

@@ -42,3 +42,41 @@ export async function importFiles(paths: string[]): Promise<{ created: { id: num
     body: JSON.stringify({ paths }),
   });
 }
+
+/** What a playlist export produced. */
+export interface PlaylistResult {
+  path: string;
+  name: string;
+  tracks: number;
+  skipped: { path: string; reason: string }[];
+  cover: string | null;
+}
+
+export interface PlaylistOptions {
+  ids: number[];
+  name: string;
+  /** Root-relative folder to write into; omit for the download root. */
+  folder?: string | null;
+  /** Absolute paths (the default) are what Plex imports need. */
+  relative?: boolean;
+  /** Rewrite paths for another machine, e.g. "/downloads" → "/data/music". */
+  prefixFrom?: string | null;
+  prefixTo?: string | null;
+  writeCover?: boolean;
+}
+
+/** Write an .m3u8 for the selected downloads. */
+export async function exportPlaylist(opts: PlaylistOptions): Promise<PlaylistResult> {
+  return apiFetch<PlaylistResult>("/library/playlist", {
+    method: "POST",
+    body: JSON.stringify({
+      ids: opts.ids,
+      name: opts.name,
+      folder: opts.folder ?? null,
+      relative: opts.relative ?? false,
+      prefix_from: opts.prefixFrom || null,
+      prefix_to: opts.prefixTo || null,
+      write_cover: opts.writeCover ?? true,
+    }),
+  });
+}

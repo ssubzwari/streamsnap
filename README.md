@@ -107,6 +107,16 @@ full card while queued rows shrink to a single line.
 
   Both the wait and the skipping itself are configurable in **Settings → Download**; turning
   skipping off restores the old stop-on-the-first-block behaviour.
+- **Export a playlist** — select finished tracks and **Export playlist…** writes an
+  extended `.m3u8` with each track's artist, title, album and duration read from the
+  files themselves, plus a cover image beside it.
+
+  **Plex has no built-in import for music playlists** — you load the file with a tool
+  such as ListPorter or Plex Playlist Importer, or via the API. Those match on the file
+  path, so the playlist has to name the paths *Plex* sees. If Plex runs in Docker it has
+  your download folder mounted somewhere else, so the dialog has two boxes
+  ("StreamSnap sees" / "Plex sees") that rewrite the paths as the file is written.
+  Absolute paths are the default for the same reason.
 - **Bulk actions** — per-row checkboxes; clear selected / completed / failed, retry failed.
   Selection-aware. Retry re-queues **in place**, keeping the row's original format and folder.
 - **Completed, grouped by source** — finished downloads collapse into per-subscription groups
