@@ -26,23 +26,6 @@ from app.utils import MEDIA_EXTS, _normalize_stem, is_audio_path
 router = APIRouter(prefix="/api/library", tags=["library"])
 
 
-class PlaylistRequest(BaseModel):
-    """Export the selected downloads as a playlist file.
-
-    `prefix_from` / `prefix_to` rewrite the paths for another machine: a Plex
-    in Docker sees the same folder under a different mount, and a playlist
-    naming StreamSnap's paths imports as an empty one.
-    """
-
-    ids: list[int]
-    name: str = "StreamSnap playlist"
-    folder: str | None = None        # root-relative; defaults to the root
-    relative: bool = False           # absolute suits Plex; relative suits portable folders
-    prefix_from: str | None = None
-    prefix_to: str | None = None
-    write_cover: bool = True
-
-
 class BulkMoveRequest(BaseModel):
     ids: list[int]
     folder: str = ""
@@ -173,53 +156,6 @@ def _subscription_for(path: str, dirs: list[tuple[str, int | None]]) -> int | No
         if folder == subscription_dir or folder.startswith(subscription_dir + os.sep):
             return sub_id
     return None
-
-
-@router.post("/playlist")
-async def export_playlist_route(
-    req: PlaylistRequest, session: AsyncSession = Depends(get_session)
-) -> dict:
-    """Write an .m3u8 for the selected downloads.
-
-    Order follows the ids as given, so the playlist is in the order the user
-    picked rather than whatever the database returns.
-    """
-    from app.services.playlist_export import export_playlist
-
-    folder = resolve_inside(req.folder) if req.folder else root_dir()
-    if not os.path.isdir(folder):
-        raise HTTPException(status_code=404, detail="Folder not found")
-
-    found = {
-        d.id: d
-        for d in (
-            await session.execute(select(Download).where(Download.id.in_(req.ids)))
-        ).scalars()
-    }
-    rows = [
-        (found[i].output_path or "", found[i].title, found[i].duration)
-        for i in req.ids
-        if i in found
-    ]
-    if not rows:
-        raise HTTPException(status_code=400, detail="No matching downloads")
-
-    result = export_playlist(
-        req.name,
-        rows,
-        folder=folder,
-        relative=req.relative,
-        prefix_from=req.prefix_from,
-        prefix_to=req.prefix_to,
-        write_cover=req.write_cover,
-    )
-    return {
-        "path": to_rel(result.path),
-        "name": result.name,
-        "tracks": result.tracks,
-        "skipped": result.skipped,
-        "cover": to_rel(result.cover) if result.cover else None,
-    }
 
 
 @router.post("/rescan")

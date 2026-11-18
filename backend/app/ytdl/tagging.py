@@ -173,23 +173,6 @@ def _clean(value) -> str | None:
     return text or None
 
 
-def read_duration(path: str) -> int | None:
-    """Length in whole seconds, read from the file itself.
-
-    The ``downloads`` row usually knows this, but a file imported from disk
-    does not, and a playlist entry without a duration (``#EXTINF:-1``) hides
-    track lengths in most players.
-    """
-    try:
-        from mutagen import File as MutagenFile
-
-        audio = MutagenFile(path)
-        length = getattr(getattr(audio, "info", None), "length", None)
-        return int(round(length)) if length and length > 0 else None
-    except Exception:  # noqa: BLE001 — a duration is a nicety, never an error
-        return None
-
-
 def read_tags(path: str) -> dict:
     """The tags already on the file at *path*, as :func:`write_tags` field names.
 
