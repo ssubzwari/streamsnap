@@ -134,6 +134,8 @@ ALLOWED_KEYS = {
     "tmdb_language",
     # Download
     "max_concurrent_downloads",
+    "bot_check_skip",
+    "bot_check_cooldown",
     "concurrent_fragments",
     "retries",
     "fragment_retries",

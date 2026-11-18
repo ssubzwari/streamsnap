@@ -89,8 +89,19 @@ full card while queued rows shrink to a single line.
 - **Real-time progress** — live speed, ETA and progress bars over Socket.IO (~2 updates/sec)
 - **Queue control** — live-applied concurrency (default 1), drag-to-reorder / "move to top" /
   nudge, **Pause all**, **Resume incomplete** (re-queues downloads a restart left mid-flight —
-  yt-dlp resumes from the partial file), and an automatic pause + alert when YouTube returns
-  a bot-check error
+  yt-dlp resumes from the partial file)
+- **Keeps going when YouTube asks for sign-in** — a "Sign in to confirm you're not a bot"
+  block is usually about one video, so StreamSnap waits (30s by default), moves that video
+  to the back of the queue and carries on with the next one, retrying it up to three times
+  before giving up on it. The whole queue no longer stops because of one awkward video.
+
+  If several downloads in a row are blocked with none succeeding in between, the block is
+  your account or IP rather than one video — skipping ahead would only burn through the
+  rest of the queue, so everything pauses and you get an alert. Adding cookies in
+  **Settings → Auth** is what actually fixes that.
+
+  Both the wait and the skipping itself are configurable in **Settings → Download**; turning
+  skipping off restores the old stop-on-the-first-block behaviour.
 - **Bulk actions** — per-row checkboxes; clear selected / completed / failed, retry failed.
   Selection-aware. Retry re-queues **in place**, keeping the row's original format and folder.
 - **Completed, grouped by source** — finished downloads collapse into per-subscription groups
@@ -327,7 +338,7 @@ The full REST endpoint list lives in
 | `download:completed` | Download finished |
 | `download:failed` | Worker exception |
 | `download:canceled` | User cancels |
-| `downloads:paused` | Queue paused/resumed (manual or bot-check auto-pause) |
+| `downloads:paused` | Queue paused/resumed (manual, or an account-wide bot block — see below) |
 | `subscription:checked` | APScheduler poll completed |
 | `subscription:new_video` | New video detected (fires before auto-download enqueues) |
 | `notification:created` | Any notification (drives toasts + browser alerts) |

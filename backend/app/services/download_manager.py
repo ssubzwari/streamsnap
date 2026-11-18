@@ -13,8 +13,10 @@ Architecture:
 
 import asyncio
 import dataclasses
+import logging
 import queue
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 
 from app.config import settings
@@ -30,9 +32,11 @@ from app.ws import (
 from app.ytdl.service import run_download
 
 
+logger = logging.getLogger(__name__)
+
+
 # Error substrings that mean "YouTube wants authentication" — not a real
-# per-video failure, and hammering it makes the block worse. When we see one
-# we stop the whole queue and alert the user.
+# per-video failure, and hammering it makes the block worse.
 _BOT_CHECK_MARKERS = (
     "confirm you’re not a bot",
     "confirm you're not a bot",
@@ -44,6 +48,32 @@ _BOT_CHECK_MARKERS = (
 def _is_bot_check(message: str) -> bool:
     m = (message or "").lower()
     return any(marker in m for marker in _BOT_CHECK_MARKERS)
+
+
+# ── Bot-check back-off ────────────────────────────────────────────────────────
+#
+# A bot check is usually about *one* video, not the whole account: skipping the
+# blocked video and carrying on works, which is what this implements. Stopping
+# the entire queue on the first one (the old behaviour) left everything else
+# stranded until someone noticed.
+#
+# Three numbers shape it:
+#
+#   cooldown        how long the queue waits before starting anything else, so
+#                   we back off instead of hammering a site that just said no.
+#                   Settable (`bot_check_cooldown`), default 30s.
+#   MAX_ATTEMPTS    how many times one download may be deferred before it is
+#                   failed for real. Without a cap a permanently blocked video
+#                   would cycle through the queue forever.
+#   PAUSE_AFTER     consecutive blocks — with no download succeeding in between
+#                   — that mean this is *not* per-video: the account or IP is
+#                   blocked, and skipping ahead would just burn the whole queue.
+#                   At that point fall back to pausing everything and asking
+#                   for cookies, which is what actually fixes it.
+_BOT_CHECK_COOLDOWN_DEFAULT = 30.0
+_BOT_CHECK_COOLDOWN_MAX = 3600.0
+_BOT_CHECK_MAX_ATTEMPTS = 3
+_BOT_CHECK_PAUSE_AFTER = 5
 
 
 # Thread-pool ceiling. Actual parallelism is gated separately by
@@ -78,6 +108,13 @@ class DownloadManager:
         # land them back in "queued", not "canceled".
         self._paused_ids: set[int] = set()
 
+        # Bot-check back-off. Attempts are per download and deliberately not
+        # cleared by _cleanup(), which also runs on the deferral path — doing
+        # so would reset the count every time and defer the same video forever.
+        self._bot_check_attempts: dict[int, int] = {}
+        self._consecutive_bot_checks: int = 0
+        self._cooldown_until: float = 0.0
+
         # Live concurrency limit (the "max_concurrent_downloads" setting).
         self._concurrency: int = _CONCURRENCY_MIN
         self._running: int = 0
@@ -110,6 +147,7 @@ class DownloadManager:
         )
         self._paused = False
         self._pause_reason = None
+        self._clear_bot_check_state()
         self._resume_event.set()
         self._running = 0
         self._counted_ids.clear()
@@ -143,6 +181,8 @@ class DownloadManager:
         return {
             "paused": self._paused,
             "reason": self._pause_reason,
+            # Seconds left on the bot-check back-off, 0 when not backing off.
+            "cooldown_seconds": max(0, round(self._cooldown_until - time.monotonic())),
             "active": len(self._active_futures),
             "max_concurrent": self._concurrency,
         }
@@ -181,6 +221,9 @@ class DownloadManager:
             return
         self._paused = False
         self._pause_reason = None
+        # A manual resume means the user has acted on the block (added cookies,
+        # waited it out), so every blocked download gets a clean slate.
+        self._clear_bot_check_state()
         self._resume_event.set()
         self._wake()
         # _paused_ids is left to drain as the cancelled downloads' final
@@ -425,6 +468,14 @@ class DownloadManager:
                 if self._paused:
                     break
 
+                # A recent bot check means the site just told us to slow down.
+                # The wait is global on purpose: starting the *next* download
+                # immediately is still hammering it.
+                await self._wait_out_cooldown()
+                await self._resume_event.wait()
+                if self._paused:
+                    break
+
                 picked = await self._pick_next_job()
                 if picked is None:
                     break
@@ -563,6 +614,10 @@ class DownloadManager:
                         DownloadInfo.model_validate(download).model_dump(mode="json")
                     )
                     await self._notify_completion(download, success=True)
+                # Something got through, so whatever block we were backing off
+                # from was per-video. Start the streak count over.
+                self._consecutive_bot_checks = 0
+                self._bot_check_attempts.pop(did, None)
                 self._cleanup(did)
 
             elif msg_type == "path_fixed":
@@ -596,18 +651,10 @@ class DownloadManager:
                     self._cleanup(did)
                     continue
 
-                # YouTube auth wall — not a real failure. Put the row back to
-                # "queued", pause everything, and alert the user once.
+                # YouTube auth wall — not a real per-video failure. Back off,
+                # move this one aside and let the rest of the queue run.
                 if _is_bot_check(error):
-                    await self._update_db(
-                        did, status="queued", speed=None, eta=None, error_message=None
-                    )
-                    await emit_download_updated(
-                        {"id": did, "status": "queued", "speed": None, "eta": None}
-                    )
-                    self._cleanup(did)
-                    if not self._paused:
-                        await self._trigger_bot_check_pause(did)
+                    await self._handle_bot_check(did, error)
                     continue
 
                 await self._update_db(did, status="failed", error_message=error)
@@ -630,7 +677,159 @@ class DownloadManager:
                     await emit_download_canceled(dataclasses.asdict(DownloadCanceledPayload(id=did)))
                 self._cleanup(did)
 
-    async def _trigger_bot_check_pause(self, download_id: int) -> None:
+    # ── Bot-check back-off ────────────────────────────────────────────────
+
+    def _clear_bot_check_state(self) -> None:
+        self._bot_check_attempts.clear()
+        self._consecutive_bot_checks = 0
+        self._cooldown_until = 0.0
+
+    async def _setting(self, key: str) -> str | None:
+        from app.models import Setting
+
+        SessionLocal = get_sessionmaker()
+        async with SessionLocal() as session:
+            row = await session.get(Setting, key)
+        return row.value if row and row.value else None
+
+    async def _bot_check_cooldown(self) -> float:
+        """Seconds to hold the queue after a block (`bot_check_cooldown`)."""
+        raw = await self._setting("bot_check_cooldown")
+        try:
+            value = float(raw) if raw is not None else _BOT_CHECK_COOLDOWN_DEFAULT
+        except (TypeError, ValueError):
+            value = _BOT_CHECK_COOLDOWN_DEFAULT
+        return max(0.0, min(_BOT_CHECK_COOLDOWN_MAX, value))
+
+    async def _bot_check_skips(self) -> bool:
+        """Whether to skip past a blocked video (default) or pause everything."""
+        return (await self._setting("bot_check_skip")) != "false"
+
+    async def _wait_out_cooldown(self) -> None:
+        """Block until the back-off expires.
+
+        Slept in short slices rather than one long sleep so a pause or a
+        shutdown during the wait is acted on promptly.
+        """
+        while True:
+            remaining = self._cooldown_until - time.monotonic()
+            if remaining <= 0:
+                return
+            await asyncio.sleep(min(remaining, 1.0))
+            if self._paused:
+                return
+
+    async def _defer_to_tail(self, download_id: int) -> None:
+        """Send a blocked download to the back of the queue.
+
+        Requeueing in place would just hand it straight back on the next pass —
+        it is the lowest ``queue_position`` by definition — so the queue would
+        spin on the one video it cannot download.
+        """
+        from sqlalchemy import func, select
+        from app.models import Download
+
+        SessionLocal = get_sessionmaker()
+        async with SessionLocal() as session:
+            d = await session.get(Download, download_id)
+            if d is None:
+                return
+            mx = (await session.execute(select(func.max(Download.queue_position)))).scalar() or 0
+            d.queue_position = mx + 1
+            await session.commit()
+
+    async def _handle_bot_check(self, download_id: int, error: str) -> None:
+        """A download came back with "sign in to confirm you're not a bot"."""
+        self._consecutive_bot_checks += 1
+        attempts = self._bot_check_attempts.get(download_id, 0) + 1
+        self._bot_check_attempts[download_id] = attempts
+
+        skip = await self._bot_check_skips()
+        streak = self._consecutive_bot_checks
+
+        # Nothing has succeeded for several blocks running: this is not one
+        # awkward video, it is the account or the IP. Skipping ahead would fail
+        # every remaining download in turn and make the block worse.
+        if not skip or streak >= _BOT_CHECK_PAUSE_AFTER:
+            await self._update_db(
+                download_id, status="queued", speed=None, eta=None, error_message=None
+            )
+            await emit_download_updated(
+                {"id": download_id, "status": "queued", "speed": None, "eta": None}
+            )
+            self._cleanup(download_id)
+            if not self._paused:
+                await self._trigger_bot_check_pause(download_id, streak=streak, skipping=skip)
+            return
+
+        cooldown = await self._bot_check_cooldown()
+        self._cooldown_until = time.monotonic() + cooldown
+
+        if attempts >= _BOT_CHECK_MAX_ATTEMPTS:
+            # Out of retries. Fail this one for real so the queue is not stuck
+            # carrying it around, and say why.
+            message = (
+                f"YouTube asked for sign-in {attempts} times "
+                f"(“{error.strip()[:160]}”). Skipped so the rest of the queue "
+                "could continue — add cookies in Settings → Auth and retry it."
+            )
+            self._bot_check_attempts.pop(download_id, None)
+            await self._update_db(download_id, status="failed", error_message=message)
+            await emit_download_failed(
+                dataclasses.asdict(DownloadFailedPayload(id=download_id, error=message))
+            )
+            download = await self._get_download(download_id)
+            if download:
+                await self._notify_completion(download, success=False, error=message)
+            self._cleanup(download_id)
+            logger.warning("bot check: giving up on download %s after %s attempts", download_id, attempts)
+            return
+
+        # Put it aside and carry on with the next one.
+        await self._update_db(
+            download_id, status="queued", speed=None, eta=None, error_message=None
+        )
+        await self._defer_to_tail(download_id)
+        await emit_download_updated(
+            {"id": download_id, "status": "queued", "speed": None, "eta": None}
+        )
+        self._cleanup(download_id)
+        logger.info(
+            "bot check on download %s (attempt %s/%s) — waiting %ss, then continuing with the next download",
+            download_id, attempts, _BOT_CHECK_MAX_ATTEMPTS, cooldown,
+        )
+
+        # Tell the user once per streak, not once per blocked video.
+        if streak == 1:
+            await self._notify_bot_check_skipping(download_id, cooldown)
+
+    async def _notify_bot_check_skipping(self, download_id: int, cooldown: float) -> None:
+        from app.services.notifications import create_notification
+
+        download = await self._get_download(download_id)
+        what = (download.title or download.url) if download else f"download #{download_id}"
+        await create_notification(
+            kind="auth_required",
+            title="YouTube asked for sign-in — skipping ahead",
+            body=(
+                f"“{what}” was blocked with “Sign in to confirm you’re not a "
+                f"bot”.\n\nStreamSnap is waiting {cooldown:.0f}s, then moving on "
+                "to the next download and retrying this one later "
+                f"({_BOT_CHECK_MAX_ATTEMPTS} attempts before it is skipped for "
+                "good). Downloads have NOT been paused.\n\n"
+                "If this keeps happening, add cookies in Settings → Auth."
+            ),
+        )
+
+    async def _trigger_bot_check_pause(
+        self, download_id: int, *, streak: int = 1, skipping: bool = False
+    ) -> None:
+        """Stop the whole queue — the block is not about one video.
+
+        Reached either because skipping is switched off, or because skipping
+        was tried and ``_BOT_CHECK_PAUSE_AFTER`` downloads in a row were
+        blocked with none succeeding in between.
+        """
         from app.services.notifications import create_notification
 
         reason = (
@@ -641,13 +840,21 @@ class DownloadManager:
 
         download = await self._get_download(download_id)
         what = (download.title or download.url) if download else f"download #{download_id}"
+        why = (
+            f"{streak} downloads in a row were blocked and none succeeded in "
+            "between, so this is the account or the IP rather than one video. "
+            "Skipping ahead would only burn through the rest of the queue."
+            if skipping
+            else "Skipping blocked videos is switched off (Settings → Download)."
+        )
         await create_notification(
             kind="auth_required",
             title="Downloads paused — YouTube sign-in required",
             body=(
                 "YouTube blocked a download with “Sign in to confirm you’re "
                 "not a bot”, so all downloads have been paused.\n\n"
-                f"First hit: {what}\n\n"
+                f"{why}\n\n"
+                f"Last hit: {what}\n\n"
                 "Fix: Settings → Auth → set cookies-from-browser (or upload a "
                 "cookies file), then click Resume downloads."
             ),

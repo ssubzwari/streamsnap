@@ -77,6 +77,8 @@ interface SettingsState {
   pad_episode_numbers: string;
   // Download
   max_concurrent_downloads: string;
+  bot_check_skip: string;
+  bot_check_cooldown: string;
   concurrent_fragments: string;
   retries: string;
   fragment_retries: string;
@@ -136,6 +138,8 @@ const DEFAULTS: SettingsState = {
   keep_video: "false",
   pad_episode_numbers: "true",
   max_concurrent_downloads: "1",
+  bot_check_skip: "true",
+  bot_check_cooldown: "30",
   concurrent_fragments: "1",
   retries: "10",
   fragment_retries: "10",
@@ -954,6 +958,43 @@ export default function Settings({ onClose }: Props) {
                 <Row>
                   <Toggle label="Continue Partial Downloads" checked={bool("continue_partial")} onChange={() => toggle("continue_partial")} />
                   <Toggle label="No Overwrites" checked={bool("no_overwrites")} onChange={() => toggle("no_overwrites")} />
+                </Row>
+
+                <SectionTitle>When YouTube asks for sign-in</SectionTitle>
+                <p className={styles.infoNote}>
+                  A “Sign in to confirm you’re not a bot” block is usually about one
+                  video rather than your whole account, so StreamSnap waits a moment,
+                  moves that video to the back of the queue and carries on with the
+                  next one. It retries the blocked video up to three times before
+                  giving up on it. If several downloads in a row are blocked with none
+                  succeeding in between, the block is your account or IP — everything
+                  pauses then, because skipping ahead would only burn through the rest
+                  of the queue. Adding cookies in Settings → Auth is what actually
+                  fixes that.
+                </p>
+                <Row>
+                  <Toggle
+                    label="Skip blocked videos and keep going"
+                    hint="Turn off to stop the whole queue on the first block, as StreamSnap used to."
+                    checked={s.bot_check_skip !== "false"}
+                    onChange={() => toggle("bot_check_skip")}
+                  />
+                </Row>
+                <Row>
+                  <Field
+                    label="Wait after a block (seconds)"
+                    hint="How long the queue pauses before starting the next download. Applies to the whole queue — starting the next one straight away is still hammering a site that just said no."
+                  >
+                    <input
+                      className={styles.inputSm}
+                      type="number"
+                      min="0"
+                      max="3600"
+                      value={s.bot_check_cooldown}
+                      onChange={(e) => set("bot_check_cooldown", e.target.value)}
+                      disabled={s.bot_check_skip === "false"}
+                    />
+                  </Field>
                 </Row>
               </div>
             )}
